@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Jot</AssemblyName>
+    <RootNamespace>Jot</RootNamespace>
+    <ApplicationIcon>assets\jot.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="index.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="styles.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="renderer.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="home.html;home.js;image.html;image.js;shared.js;design-tokens.js;workspace.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="i18n.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="settings.html;settings.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="tests\renderer-tests.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+bin/
+obj/
+dist/
+node_modules/
+test-results/
+*.WebView2/
+logs/
+data/
+notes.json*
+startup-error.txt
+.vs/
+*.user
+*.suo
