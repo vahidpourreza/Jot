@@ -22,6 +22,8 @@ public partial class MainWindow
     }
     private async Task Capture(string name)
     {
+        await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
+        await Task.Delay(180); // Include settled native-header CSS transitions.
         await using var stream=File.Create(Path.Combine(testOutput,name+".png"));
         await Browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,stream);
     }
@@ -35,6 +37,7 @@ public partial class MainWindow
     }
     private async Task ClickControl(string selector)
     {
+        await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
         using var point=JsonDocument.Parse(await Script("(()=>{const r=document.querySelector("+JsonSerializer.Serialize(selector)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
         var x=point.RootElement.GetProperty("x").GetDouble();var y=point.RootElement.GetProperty("y").GetDouble();
         foreach(var type in new[]{"mouseMoved","mousePressed","mouseReleased"})
@@ -58,17 +61,38 @@ public partial class MainWindow
         await ClickControl("#settingsBack");
         await WaitFor("window.jotReady===true&&document.getElementById('homeSearch')!==null");
     }
+    private async Task VerifyFontLimitCursor(List<object> checks,MainWindow note)
+    {
+        var original=JsonSerializer.Deserialize<int>(await note.Script("model.prefs.fontSize"));
+        foreach(var limit in new[]{13,24})
+        {
+            await note.Script("setPreference({fontSize:"+limit+"}).then(()=>window.limitReady="+limit+")");
+            await note.WaitFor("window.limitReady==="+limit);
+            await note.ClickControl("#menuButton");
+            var button=limit==13?"smallerButton":"largerButton";
+            var before=note.TestHostActions.Count(action=>action=="preferences");
+            await note.ClickControl("#"+button);
+            checks.Add(new{name="font-limit-"+limit+"-hover-is-not-a-loader",passed=await note.Script("(()=>{const b=document.getElementById('"+button+"');return b.disabled&&b.matches(':hover')&&getComputedStyle(b).cursor==='default'&&getComputedStyle(b).animationName==='none'&&b.getAttribute('aria-busy')!=='true'&&b.title.includes('"+limit+" px')&&model.prefs.fontSize==="+limit+";})()")=="true"&&note.TestHostActions.Count(action=>action=="preferences")==before});
+            await note.Capture("font-limit-"+limit);
+            await note.ClickControl(limit==13?"#largerButton":"#smallerButton");
+            await note.WaitFor("model.prefs.fontSize==="+(limit==13?14:23));
+            checks.Add(new{name="font-size-can-move-away-from-"+limit,passed=await note.Script("!document.getElementById('smallerButton').disabled&&!document.getElementById('largerButton').disabled")=="true"});
+            await note.Script("closePanels()");
+        }
+        await note.Script("setPreference({fontSize:"+original+"}).then(()=>window.limitRestore=true)");
+        await note.WaitFor("window.limitRestore===true");
+    }
     private void CaptureCornerMask(List<object> checks)
     {
         // Unit render of this app's WPF surface only; no desktop capture or other windows.
         var bitmap=new RenderTargetBitmap((int)Width,(int)Height,96,96,PixelFormats.Pbgra32);
         var visual=new DrawingVisual();
         using(var context=visual.RenderOpen())
-            context.DrawRoundedRectangle(System.Windows.Media.Brushes.White,null,new System.Windows.Rect(8,8,Width-16,Height-16),14,14);
+            context.DrawRoundedRectangle(System.Windows.Media.Brushes.White,null,new System.Windows.Rect(8,8,Width-16,Height-16),6,6);
         bitmap.Render(visual);
         var bytes=new byte[(int)Width*(int)Height*4];bitmap.CopyPixels(bytes,(int)Width*4,0);
         bool partial=false;for(int y=8;y<24;y++)for(int x=8;x<24;x++){var alpha=bytes[(y*(int)Width+x)*4+3];if(alpha>0&&alpha<255)partial=true;}
-        checks.Add(new {name="rounded-surface-has-antialiased-alpha",passed=partial&&Browser.Clip is RectangleGeometry&&AllowsTransparency});
+        checks.Add(new {name="six-pixel-corners-have-antialiased-alpha",passed=partial&&Surface.CornerRadius.TopLeft==6&&Browser.Clip is RectangleGeometry clip&&clip.RadiusX==5&&AllowsTransparency});
         using var output=File.Create(Path.Combine(testOutput,"corner-mask.png"));var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));encoder.Save(output);
     }
     private async Task RunSelfTests()
@@ -84,11 +108,19 @@ public partial class MainWindow
             dormant.StartInTray();
             checks.Add(new{name="tray-start-does-not-open-window-or-webview",passed=!dormant.IsVisible&&!dormant.ShowInTaskbar&&dormant.Browser.CoreWebView2 is null});
             dormant.ClosePermanently();
+            var desktopProbeSession=new JotSession(false,testOutput);
+            foreach(var mode in new[]{"home","note","image"})
+            {
+                var probe=new MainWindow(desktopProbeSession,mode);
+                checks.Add(new{name="taskbar-enabled-for-visible-"+mode,passed=probe.ShowInTaskbar&&!probe.IsVisible&&probe.Browser.CoreWebView2 is null});
+                probe.ClosePermanently();
+            }
             await ClickControl("#homeNew");
             for(int i=0;i<100&&!session.Windows.Any(w=>w.Mode=="note");i++)await Task.Delay(50);
             var a=session.Windows.First(w=>w.Mode=="note");
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
+            checks.Add(new{name="new-notes-default-to-neutral-not-crimson",passed=await a.Script("activeNote().color==='neutral'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='neutral'")=="true"});
             await a.Script("setInputDirection('rtl')");
             await a.Capture("empty-persian");
             await a.Script("setInputDirection('ltr')");
@@ -122,27 +154,54 @@ public partial class MainWindow
             await GoToSettings();
             var settings=this;
             checks.Add(new{name="settings-reuses-index-window",passed=session.Windows.Count==windowCount&&source.Handle==rootHandle&&IsSettingsView&&session.Windows.All(w=>w.Mode!="settings")});
-            await settings.ClickControl("[data-accent='blue']");
-            await a.WaitFor("model.prefs.accent==='blue'");await b.WaitFor("model.prefs.accent==='blue'");
-            await settings.ClickControl("#coloredIcons");await settings.ClickControl("[data-weight='2.4']");
-            await a.WaitFor("model.prefs.coloredIcons===true&&model.prefs.iconWeight===2.4");
+            await a.ClickControl("#menuButton");await a.ClickControl("[data-note-color='blue']");
+            await a.WaitFor("activeNote().color==='blue'");await a.Script("closePanels()");
+            await b.ClickControl("#menuButton");
+            await b.ClickControl("[data-note-color='rose']");
+            await b.WaitFor("activeNote().color==='rose'");await b.Script("closePanels()");
+            await settings.ClickControl("[data-weight='2.4']");
+            await a.WaitFor("model.prefs.iconWeight===2.4");
             for(int i=0;i<100&&(a.NativeIconKey==""||a.NativeIconKey!=NativeIconKey);i++)await Task.Delay(30);
             checks.Add(new{name="native-icons-remain-monochrome",passed=a.NativeIconKey==NativeIconKey&&b.NativeIconKey==NativeIconKey&&NativeIconKey.StartsWith("monochrome-")});
-            checks.Add(new{name="live-appearance-sync-across-windows",passed=await b.Script("document.documentElement.dataset.color==='blue'&&document.documentElement.dataset.coloredIcons==='true'")=="true"});
-            checks.Add(new{name="nineteen-design-system-accents",passed=await settings.Script("document.querySelectorAll('[data-accent]').length===19")=="true"});
-            await settings.Capture("settings-persian");
+            checks.Add(new{name="neutral-application-with-independent-note-colors",passed=await b.Script("document.documentElement.dataset.color==='neutral'&&document.documentElement.dataset.coloredIcons==='false'&&app.dataset.noteColor==='rose'")=="true"&&await a.Script("app.dataset.noteColor==='blue'")=="true"});
+            checks.Add(new{name="nineteen-design-system-note-colors",passed=await a.Script("document.querySelectorAll('#noteColors button[data-note-color]').length===19")=="true"});
+            checks.Add(new{name="global-color-controls-removed",passed=await settings.Script("document.querySelector('#accentChoices,#coloredIcons')===null")=="true"});
+            await settings.Capture("settings-neutral");
             settings.RenderWindowSurface("composed-window");
             await GoToIndex();
             checks.Add(new{name="back-restores-index-group",passed=!IsSettingsView&&source.Handle==rootHandle&&await Script("currentGroup==='Work'&&document.querySelectorAll('.note-card').length===1")=="true"});
             await ClickControl("[data-group='*']");
             checks.Add(new{name="index-has-no-promotional-heading",passed=await Script("document.querySelector('.index-heading,.index-eyebrow')===null")=="true"});
             checks.Add(new{name="grouping-action-visible",passed=await Script("[...document.querySelectorAll('.card-edit')].every(button=>button.textContent.includes('Title and group'))")=="true"});
+            await a.Script("editor.innerHTML='<p>Notes list saves the latest draft</p>';onEdit();clearTimeout(saveTimer)");
+            await a.ClickControl("#menuButton");await a.ClickControl("#menuNotesButton");
+            await WaitFor("homeData.notes.some(n=>n.plain.includes('Notes list saves the latest draft'))");
+            checks.Add(new{name="sticky-menu-notes-list-saves-and-reuses-index",passed=a.TestHostActions.Contains("home")&&session.Windows.Count==windowCount&&!IsSettingsView&&await a.Script("document.getElementById('menu').hidden")=="true"});
             await a.Script(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"tests","renderer-tests.js")));
             await a.WaitFor("window.testsFinished===true",500);
             using(var results=JsonDocument.Parse(await a.Script("window.testResults")))
                 foreach(var result in results.RootElement.EnumerateArray())checks.Add(result.Clone());
+            await VerifyFontLimitCursor(checks,a);
+            await VerifyNoteMotion(checks,a);
+            await VerifyInactivePinnedChrome(checks,a);
+            foreach(var action in new[]{("#copyButton","clipboard-write"),("#exportButton","export")})
+            {
+                var before=a.TestHostActions.Count(item=>item==action.Item2);
+                await a.ClickControl("#menuButton");await a.ClickControl(action.Item1);
+                for(int i=0;i<100&&a.TestHostActions.Count(item=>item==action.Item2)==before;i++)await Task.Delay(20);
+                checks.Add(new{name="restored-more-action-"+action.Item2,passed=a.TestHostActions.Count(item=>item==action.Item2)>before&&await a.Script("document.getElementById('menu').hidden")=="true"});
+            }
+            var appearanceCount=session.Windows.Count;
+            await GoToSettings();
+            checks.Add(new{name="appearance-removed-from-note-settings-remain-in-index",passed=IsSettingsView&&source.Handle==rootHandle&&session.Windows.Count==appearanceCount&&await a.Script("document.getElementById('appearanceButton')===null")=="true"});
+            await GoToIndex();
             await a.Capture("note-with-toolbar");
-            await a.ClickControl("#blockMenuButton");await a.Capture("toolbar-style-menu");await a.Script("closeFormatMenus()");
+            a.Post(new { @event="active-window",active=true });await a.WaitFor("app.dataset.activeWindow==='true'");
+            await a.ClickControl("#pinButton");await a.WaitFor("document.getElementById('pinButton').getAttribute('aria-pressed')==='true'");
+            await Task.Delay(150);await a.Capture("pinned-note-dark");
+            await a.ClickControl("#menuButton");await a.Capture("more-options-header");await a.Script("closePanels()");
+            await a.ClickControl("#pinButton");await a.WaitFor("document.getElementById('pinButton').getAttribute('aria-pressed')==='false'");
+            checks.Add(new{name="text-style-dropdown-removed",passed=await a.Script("document.getElementById('blockMenuButton')===null")=="true"});
             await a.ClickControl("#colorMenuButton");await a.Capture("toolbar-color-menu");await a.Script("closeFormatMenus()");
             var viewer=session.Windows.LastOrDefault(w=>w.Mode=="image");
             if(viewer is not null)
@@ -162,6 +221,30 @@ public partial class MainWindow
             await a.Capture("note-small");
             await a.Script("setPreference({toolbarVisible:true}).then(()=>window.smallToolbar=true)");await a.WaitFor("window.smallToolbar===true");
             checks.Add(new{name="small-toolbar-fits",passed=await a.Script("document.getElementById('formatBar').scrollWidth<=document.getElementById('formatBar').clientWidth")=="true"});
+            var priorHeight=a.Height;a.Width=320;a.Height=250;await Task.Delay(200);
+            await a.Script("document.getElementById('menuButton').click()");
+            checks.Add(new{name="full-more-menu-fits-short-window-with-scrollable-options",passed=await a.Script("(()=>{const menu=document.getElementById('menu'),m=menu.getBoundingClientRect(),actions=document.getElementById('menuActions');return m.top===0&&m.left===0&&m.bottom<=innerHeight-24&&m.width===innerWidth&&actions.scrollHeight>actions.clientHeight;})()")=="true"});
+            await a.Capture("small-header-menu");
+            await a.Script("closePanels()");await Task.Delay(180);
+            checks.Add(new{name="bottom-toolbar-fits-minimum-window-in-one-row",passed=await a.Script("(()=>{const f=document.querySelector('.quiet-footer').getBoundingClientRect();return [...document.querySelectorAll('.quiet-footer button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=f.top&&r.bottom<=f.bottom;});})()")=="true"});
+            checks.Add(new{name="footer-svg-centers-align-at-minimum-window-size",passed=await a.Script("(()=>{const icons=[...document.querySelectorAll('.quiet-footer button>svg')].map(svg=>svg.getBoundingClientRect());return icons.length===10&&icons.every(r=>r.width===16&&r.height===16)&&Math.max(...icons.map(r=>r.y+r.height/2))-Math.min(...icons.map(r=>r.y+r.height/2))<.1;})()")=="true"});
+            await a.Capture("aligned-toolbar-minimum");
+            await a.Script("document.getElementById('menuButton').click()");
+            await a.WaitFor("noteMenuAnimation===null");
+            checks.Add(new{name="all-colors-visible-and-hittable-at-minimum-window-size",passed=await a.Script("(()=>{const p=document.getElementById('noteColors'),colors=[...p.querySelectorAll('button')];return colors.length===19&&p.scrollWidth<=p.clientWidth&&colors.every(button=>{const r=button.getBoundingClientRect();return r.width>=15&&r.height===40&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});})()")=="true"});
+            await a.ClickControl("[data-note-color='neutral']");await a.WaitFor("activeNote().color==='neutral'");
+            checks.Add(new{name="last-color-selects-without-scrolling-at-minimum-size",passed=await a.Script("app.dataset.noteColor==='neutral'&&document.getElementById('noteColors').scrollLeft===0")=="true"});
+            await a.ClickControl("[data-note-color='blue']");await a.WaitFor("activeNote().color==='blue'");
+            await a.Script("document.getElementById('menuActions').scrollTop=document.getElementById('menuActions').scrollHeight");
+            checks.Add(new{name="small-menu-keeps-palette-visible-and-delete-reachable",passed=await a.Script("(()=>{const color=document.getElementById('noteColors').getBoundingClientRect(),del=document.getElementById('deleteButton').getBoundingClientRect(),menu=document.getElementById('menu').getBoundingClientRect();return color.top===0&&color.height===40&&del.top>=color.bottom&&del.bottom<=menu.bottom;})()")=="true"});
+            await a.Capture("small-menu-scrolled");
+            await a.ClickControl("#deleteButton");await a.WaitFor("document.getElementById('deleteDialog').open");await a.ClickControl("#deleteCancel");
+            a.Height=priorHeight;await Task.Delay(150);
+            var toolHeight=a.Height;a.Height=250;await Task.Delay(150);
+            await a.ClickControl("#colorMenuButton");
+            await a.WaitFor("colorMenuAnimation===null");
+            checks.Add(new{name="color-picker-fits-short-window",passed=await a.Script("(()=>{const m=document.getElementById('colorMenu').getBoundingClientRect();return m.top>=0&&m.bottom<=innerHeight&&m.left>=0&&m.right<=innerWidth;})()")=="true"});
+            await a.Capture("small-writing-tools");await a.Script("closeFormatMenus()");a.Height=toolHeight;await Task.Delay(150);
             GetWindowRect(a.source!.Handle,out var rect);
             var hits=new List<int>();
             foreach(var point in new[]{(rect.Left+9,(rect.Top+rect.Bottom)/2),(rect.Right-10,(rect.Top+rect.Bottom)/2),((rect.Left+rect.Right)/2,rect.Top+9),((rect.Left+rect.Right)/2,rect.Bottom-10)})
@@ -169,9 +252,10 @@ public partial class MainWindow
             checks.Add(new{name="resize-hit-zones",passed=hits.SequenceEqual(new[]{10,11,12,15}),actual=hits});
             await a.Script("setPreference({theme:'light',toolbarVisible:true}).then(()=>window.prefSaved=true)");await a.WaitFor("window.prefSaved===true");
             await a.Reload();
-            checks.Add(new{name="note-reload-preserves-text-images-and-preferences",passed=await a.Script("editor.textContent.includes('Meeting notes')&&!!editor.querySelector('img')&&model.prefs.theme==='light'&&!document.getElementById('formatBar').hidden")=="true"});
+            await a.ClickControl("#menuButton");await a.Capture("sticky-menu-light");await a.Script("closePanels()");
+            checks.Add(new{name="note-reload-preserves-text-images-color-and-preferences",passed=await a.Script("editor.textContent.includes('Meeting notes')&&!!editor.querySelector('img')&&activeNote().color==='blue'&&model.prefs.theme==='light'&&!document.getElementById('formatBar').hidden")=="true"});
             await b.Reload();
-            checks.Add(new{name="other-note-still-intact-after-all-operations",passed=await b.Script("editor.textContent.includes('Note B')")=="true"});
+            checks.Add(new{name="other-note-still-intact-after-all-operations",passed=await b.Script("editor.textContent.includes('Note B')&&activeNote().color==='rose'")=="true"});
             await WaitFor("homeData.notes.length>=2");
             await Capture("home");
             await Script("document.getElementById('homeSearch').value='Note B';renderCards()");
@@ -215,6 +299,7 @@ public partial class MainWindow
                 bitmap.Save(Path.Combine(testOutput,light?"tray-icon-light-background.png":"tray-icon-dark-background.png"));
             }
             await VerifyErrorHandling(checks);
+            await VerifyPersonalization(checks,a,b);
             var isolated = new NoteStore(Path.Combine(testOutput,"corrupt-store-check"));
             Directory.CreateDirectory(isolated.Root);
             await File.WriteAllTextAsync(isolated.FilePath,"sentinel-broken-json");
@@ -231,7 +316,7 @@ public partial class MainWindow
             checks.Add(new{name="english-ui-still-supports-persian-and-english",passed=await a.Script("getComputedStyle(editor.querySelector('p')).direction==='ltr'&&[...editor.querySelectorAll('p')].some(p=>getComputedStyle(p).direction==='rtl')")=="true"});
             await settings.Capture("settings-english");
             await GoToIndex();await Capture("index-english");
-            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').textContent.includes('New note')&&document.querySelector('#homeQuit .quit-idle').textContent==='Quit Jot'")=="true"&&await a.Script("document.getElementById('copyTextButton').textContent.includes('Copy text only')")=="true"});
+            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').textContent.includes('New note')&&document.querySelector('#homeQuit .quit-idle').textContent==='Quit Jot'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
             await GoToSettings();
             await settings.Script("preference({language:'fa'}).then(()=>window.legacyLanguageChecked=true)");
             await settings.WaitFor("window.legacyLanguageChecked===true");
@@ -239,10 +324,15 @@ public partial class MainWindow
             checks.Add(new{name="legacy-persian-ui-setting-is-ignored",passed=await Script("document.querySelector('.index-app').dir==='ltr'&&document.getElementById('homeNew').textContent.includes('New note')")=="true"});
             a.Post(new { @event="active-window",active=true });await a.WaitFor("app.dataset.activeWindow==='true'");
             await a.Capture("selected-note");
-            checks.Add(new{name="neutral-note-body-with-colored-header",passed=await a.Script("getComputedStyle(app).backgroundColor===getComputedStyle(document.documentElement).backgroundColor&&getComputedStyle(document.getElementById('handle')).backgroundColor!==getComputedStyle(editor).backgroundColor")=="true"});
+            a.RenderWindowSurface("note-window-active");
+            await a.ClickControl("#pinButton");await a.WaitFor("document.getElementById('pinButton').getAttribute('aria-pressed')==='true'");
+            await Task.Delay(150);await a.Capture("pinned-note-light");
+            await a.ClickControl("#pinButton");await a.WaitFor("document.getElementById('pinButton').getAttribute('aria-pressed')==='false'");
+            checks.Add(new{name="neutral-note-body-with-colored-header",passed=await a.Script("getComputedStyle(app).backgroundColor===getComputedStyle(document.documentElement).backgroundColor&&getComputedStyle(document.getElementById('handle'),'::before').backgroundColor!==getComputedStyle(editor).backgroundColor")=="true"});
             a.Post(new { @event="active-window",active=false });await a.WaitFor("app.dataset.activeWindow==='false'");
             await a.Capture("inactive-note");
-            checks.Add(new{name="inactive-note-top-color-strip",passed=await a.Script("getComputedStyle(document.getElementById('handle')).borderTopWidth==='4px'&&getComputedStyle(app).backgroundColor===getComputedStyle(editor).backgroundColor")=="true"});
+            a.RenderWindowSurface("note-window-inactive");
+            checks.Add(new{name="inactive-note-eight-pixel-color-strip",passed=await a.Script("getComputedStyle(document.getElementById('handle'),'::before').height==='8px'&&getComputedStyle(app).backgroundColor===getComputedStyle(editor).backgroundColor")=="true"});
             // A failed save must cancel Quit and leave all windows and drafts available.
             await a.Script("window.realId=model.activeId;activeNote().id='invalid';model.activeId='invalid';revision++;clearTimeout(saveTimer)");
             var beforeFailedQuit=session.Windows.Count;

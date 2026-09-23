@@ -4,7 +4,11 @@ const editor = $('editor'), app = $('app'), request = JotBridge.request;
 let model = {version:2,activeId:null,notes:[],prefs:{...JotDesign.defaults}};
 let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer;
 let saveChain=Promise.resolve(),bookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
-let inputDirection='rtl';
+let inputDirection='rtl',deleting=false;
+let noteMenuAnimation=null,toolbarAnimation=null,colorMenuAnimation=null,toolbarShown=null;
+const visibilityAnimations=new Map();
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const formatMenus=[['colorMenuButton','colorMenu']];
 const histories=new Map();
 const EMPTY='<p dir="auto"><br></p>';
 const blockSelector='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,table,td,th';
@@ -20,8 +24,8 @@ JotBridge.on(data=>{
   if(data.event==='active-window')app.dataset.activeWindow=String(data.active);
   if(data.event==='clipboard-success'&&$('error').dataset.operation?.startsWith('clipboard-'))$('error').hidden=true;
   if(data.event==='preferences'){model.prefs={...JotDesign.defaults,...data.prefs};applyPrefs();refreshToolbar();}
+  if(data.event==='note-color'&&activeNote()){activeNote().color=data.color;applyNoteColor();}
   if(data.event==='warning'||data.event==='quit-failed'){
-    if(data.event==='quit-failed'){$('closeAppButton').disabled=false;$('closeAppButton').setAttribute('aria-busy','false');}
     showError(Object.assign(new Error(data.message),{operation:data.event,logged:true}));
   }
 });
@@ -202,8 +206,7 @@ function undo(redo = false) {
 }
 function closePanels() {
   closeFormatMenus();
-  $('formatBar').hidden = model.prefs.toolbarVisible === false; $('menu').hidden = true;
-  $('formatButton').setAttribute('aria-expanded', String(!$('formatBar').hidden));
+  setToolbarVisible(model.prefs.toolbarVisible !== false); setNoteMenuVisible(false);
   $('menuButton').setAttribute('aria-expanded', 'false');
   keepFormatOpen = model.prefs.toolbarVisible !== false;
 }
@@ -250,16 +253,43 @@ function renderList() {
   }
 }
 function openNotes() {
+  closePanels();
   saveNow().then(()=>request('home')).catch(showError);
 }
 function applyPrefs() {
   model.prefs=JotDesign.apply(model.prefs);
-  $('fontSize').textContent=model.prefs.fontSize;
+  applyNoteColor();
+  $('fontSize').textContent=model.prefs.fontSize+' px';
   $('smallerButton').disabled=model.prefs.fontSize<=13;
   $('largerButton').disabled=model.prefs.fontSize>=24;
+  $('smallerButton').title=$('smallerButton').disabled?'Minimum font size (13 px)':'Decrease font size';
+  $('largerButton').title=$('largerButton').disabled?'Maximum font size (24 px)':'Increase font size';
+  const nextMode=model.prefs.theme==='dark'?'light':'dark';
+  $('themeLabel').textContent=nextMode==='light'?'Light mode':'Dark mode';
+  $('themeButton').title='Switch all Jot windows to '+nextMode+' mode';
   keepFormatOpen=model.prefs.toolbarVisible!==false;
-  $('formatBar').hidden=!keepFormatOpen;
-  $('formatButton').setAttribute('aria-expanded',String(keepFormatOpen));
+  setToolbarVisible(keepFormatOpen);
+}
+function applyNoteColor() {
+  const color=JotDesign.noteColor(activeNote()?.color);
+  app.dataset.noteColor=color.slug;
+  app.style.setProperty('--note-accent',color.primary);
+  app.style.setProperty('--note-accent-foreground',color.foreground);
+  $('noteColors').querySelectorAll('button[data-note-color]').forEach(button=>{
+    const swatch=JotDesign.noteColor(button.dataset.noteColor);
+    button.style.setProperty('--swatch',swatch.primary);button.style.color=swatch.foreground;
+    button.setAttribute('aria-pressed',String(swatch.slug===color.slug));
+    button.tabIndex=swatch.slug===color.slug?0:-1;
+  });
+}
+async function setNoteColor(color) {
+  const buttons=[...$('noteColors').querySelectorAll('button')];
+  buttons.forEach(button=>button.disabled=true);
+  const chosen=buttons.find(button=>button.dataset.noteColor===color);
+  chosen?.setAttribute('aria-busy','true');
+  try { await request('note-metadata',{id:model.activeId,color});activeNote().color=color;applyNoteColor(); }
+  catch(error){showError(error);}
+  finally{buttons.forEach(button=>button.disabled=false);chosen?.removeAttribute('aria-busy');}
 }
 async function setPreference(patch) {
   model.prefs={...model.prefs,...patch};applyPrefs();
@@ -268,24 +298,35 @@ async function setPreference(patch) {
 }
 function refreshToolbar() {
   document.querySelectorAll('[data-command][aria-pressed]').forEach((button) => button.setAttribute('aria-pressed', String(document.queryCommandState(button.dataset.command))));
-  const block=String(document.queryCommandValue('formatBlock')||'p').toLowerCase().replace(/[<>]/g,'');
-  $('blockLabel').textContent=JotI18n.text(({p:'متن',div:'متن',h1:'تیتر',h2:'تیتر',h3:'تیتر',blockquote:'نقل‌قول',pre:'کد'})[block]||'متن');
-}
-function closeFormatMenus() {
-  for(const [button,panel] of [['blockMenuButton','blockMenu'],['colorMenuButton','colorMenu'],['formatMoreButton','formatMoreMenu']]){
-    $(panel).hidden=true;$(button).setAttribute('aria-expanded','false');
+  const selection=getSelection();
+  if(selection.rangeCount&&editor.contains(selection.anchorNode)&&editor.contains(selection.focusNode)){
+    const color=document.queryCommandValue('foreColor');
+    if(color&&CSS.supports('color',color))$('colorMenuButton').style.setProperty('--selected-text-color',color);
   }
 }
-function toggleFormatMenu(buttonId,panelId) {
-  const open=$(panelId).hidden;closeFormatMenus();
-  if(!open)return;
-  const rect=$(buttonId).getBoundingClientRect(),container=app.getBoundingClientRect();
-  const panel=$(panelId);panel.hidden=false;
-  panel.style.top=(rect.bottom-container.top+8)+'px';
-  panel.style.left=Math.max(8,Math.min(rect.left-container.left,container.width-panel.offsetWidth-8))+'px';
-  $(buttonId).setAttribute('aria-expanded','true');
+function syncColorChoices() {
+  const selected=JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color);
+  const normal=JotDesign.hexColor(getComputedStyle(editor).color);
+  $('colors').querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String((button.dataset.color==='currentColor'?normal:button.dataset.color)===selected)));
 }
-for(const [button,panel] of [['blockMenuButton','blockMenu'],['colorMenuButton','colorMenu'],['formatMoreButton','formatMoreMenu']]){
+function closeFormatMenus() {
+  setColorMenuVisible(false);
+}
+function toggleFormatMenu(buttonId,panelId) {
+  const open=$(panelId).hidden;
+  if(open)syncColorChoices();
+  setColorMenuVisible(open);
+  if(open)positionFormatMenu(buttonId,panelId);
+}
+function positionFormatMenu(buttonId,panelId) {
+  if($(panelId).hidden)return;
+  const rect=$(buttonId).getBoundingClientRect(),container=app.getBoundingClientRect();
+  const panel=$(panelId),above=rect.top-container.top-8;
+  panel.style.maxHeight=Math.max(0,above-8)+'px';
+  panel.style.top=Math.max(8,above-panel.offsetHeight)+'px';
+  panel.style.left=Math.max(8,Math.min(rect.left-container.left,container.width-panel.offsetWidth-8))+'px';
+}
+for(const [button,panel] of formatMenus){
   $(button).addEventListener('click',()=>toggleFormatMenu(button,panel));
   $(panel).addEventListener('pointerdown',event=>event.preventDefault());
 }
@@ -364,9 +405,7 @@ editor.addEventListener('copy',event=>{
   event.clipboardData.setData('text/plain',payload.text);
   request('clipboard-write',payload).catch(showError);
 });
-$('copyButton').addEventListener('click',()=>request('clipboard-write',copyPayload(true)).catch(showError));
-$('copyTextButton').addEventListener('click',()=>request('clipboard-text',editor.innerText).catch(showError));
-$('appearanceButton').addEventListener('click',()=>saveNow().then(()=>request('home',true)).catch(showError));
+$('copyButton').addEventListener('click',()=>{closePanels();request('clipboard-write',copyPayload(true)).catch(showError);});
 editor.addEventListener('click',event=>{
   if(event.target.tagName==='IMG'){event.preventDefault();request('view-image',event.target.src).catch(showError);}
 });
@@ -377,9 +416,10 @@ function loadIcons() {
     const button = document.createElement('button');
     button.className = 'swatch'; button.style.setProperty('--swatch', color);
     button.title = label; button.setAttribute('aria-label', label); button.dataset.color = color;
+    button.append(JotDesign.icon(color==='currentColor'?'type':'check'));
     button.addEventListener('click', () => {
       command('foreColor', color === 'currentColor' ? 'inherit' : color);
-      $('selectedColor').style.setProperty('--selected-text-color',color==='currentColor'?'var(--foreground)':color);
+      $('colorMenuButton').style.setProperty('--selected-text-color',color==='currentColor'?'var(--foreground)':color);
       document.querySelectorAll('[data-color]').forEach(swatch=>swatch.setAttribute('aria-pressed',String(swatch===button)));
       closeFormatMenus();
     });
@@ -403,40 +443,118 @@ editor.addEventListener('drop', (event) => {
 editor.addEventListener('click', (event) => { if (event.target.closest('a')) event.preventDefault(); });
 $('formatBar').addEventListener('pointerdown', (event) => event.preventDefault());
 document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => {command(button.dataset.command);closeFormatMenus();}));
-document.querySelectorAll('[data-block]').forEach((button) => button.addEventListener('click', () => {command('formatBlock', button.dataset.block);closeFormatMenus();}));
 $('formatButton').addEventListener('pointerdown', (event) => { rememberSelection(); event.preventDefault(); });
 $('formatButton').addEventListener('click',()=>setPreference({toolbarVisible:!keepFormatOpen}));
 document.addEventListener('selectionchange',()=>{rememberSelection();refreshToolbar();});
 $('newButton').addEventListener('click', newNote);
 $('dialogNewButton').addEventListener('click', newNote);
-$('notesButton').addEventListener('click', openNotes);
+$('menuNotesButton').addEventListener('click', openNotes);
 $('closeNotesButton').addEventListener('click', () => { $('notesDialog').close(); editor.focus(); });
 $('search').addEventListener('input', renderList);
 $('notesDialog').addEventListener('close', () => editor.focus());
+function positionNoteMenu() {
+  if($('menu').hidden)return;
+  $('menu').style.maxHeight=Math.max(0,app.clientHeight-24)+'px';
+}
+function transitionVisibility(panel,open,closedFrame,shownFrame,duration,settled,animate=true) {
+  const previous=visibilityAnimations.get(panel);
+  const style=previous?getComputedStyle(panel):null;
+  const from=style?Object.fromEntries(Object.keys(closedFrame).map(key=>[key,style[key]])):(open?closedFrame:shownFrame);
+  previous?.cancel();visibilityAnimations.delete(panel);panel.classList.remove('is-exiting');
+  panel.hidden=!open;panel.inert=!open;panel.setAttribute('aria-hidden',String(!open));
+  if(!animate||reducedMotion.matches)return null;
+  if(!open)panel.classList.add('is-exiting');
+  const animation=panel.animate([from,open?shownFrame:closedFrame],{duration,easing:'cubic-bezier(.22,.61,.36,1)',fill:'both'});
+  visibilityAnimations.set(panel,animation);
+  animation.onfinish=()=>{
+    if(visibilityAnimations.get(panel)!==animation)return;
+    visibilityAnimations.delete(panel);panel.classList.remove('is-exiting');animation.cancel();settled();
+  };
+  return animation;
+}
+function setNoteMenuVisible(open) {
+  const panel=$('menu');if(!open&&panel.hidden)return;
+  $('menuButton').setAttribute('aria-expanded',String(open));
+  noteMenuAnimation=transitionVisibility(panel,open,{opacity:1,clipPath:'inset(0% 0% 100% 0%)'},{opacity:1,clipPath:'inset(0% 0% 0% 0%)'},open?260:200,()=>noteMenuAnimation=null);
+}
+function setToolbarVisible(open) {
+  $('formatButton').setAttribute('aria-expanded',String(open));
+  $('formatButton').title=(open?'Hide':'Show')+' formatting tools · Ctrl+Shift+F';
+  if(toolbarShown===open)return;
+  const initialized=toolbarShown!==null;toolbarShown=open;
+  if(!open)closeFormatMenus();
+  toolbarAnimation=transitionVisibility($('formatBar'),open,{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0px)'},open?220:180,()=>toolbarAnimation=null,initialized);
+}
+function setColorMenuVisible(open) {
+  const panel=$('colorMenu');if(!open&&panel.hidden)return;
+  $('colorMenuButton').setAttribute('aria-expanded',String(open));
+  colorMenuAnimation=transitionVisibility(panel,open,{opacity:0,transform:'translateY(6px) scale(.96)'},{opacity:1,transform:'translateY(0px) scale(1)'},open?160:120,()=>colorMenuAnimation=null);
+}
+reducedMotion.addEventListener('change',()=>{
+  if(!reducedMotion.matches)return;
+  for(const [panel,animation] of visibilityAnimations){animation.cancel();panel.classList.remove('is-exiting');}
+  visibilityAnimations.clear();noteMenuAnimation=toolbarAnimation=colorMenuAnimation=null;
+});
 $('menuButton').addEventListener('click', () => {
-  const open = $('menu').hidden; closePanels(); $('menu').hidden = !open;
+  const open = $('menu').hidden; closePanels(); if(open)setNoteMenuVisible(true);
   $('menuButton').setAttribute('aria-expanded', String(open)); app.classList.remove('typing');
+  if(open){
+    $('menuActions').scrollTop=0;
+    positionNoteMenu();
+    const selected=$('noteColors').querySelector('[aria-pressed=true]');
+    selected?.focus({preventScroll:true});
+  }
 });
-$('themeButton').addEventListener('click', () => {
-  setPreference({theme:model.prefs.theme === 'dark' ? 'light' : 'dark'});
+window.addEventListener('resize',()=>{
+  positionNoteMenu();
+  for(const [button,panel] of formatMenus)positionFormatMenu(button,panel);
 });
+$('noteColors').addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  const buttons=[...$('noteColors').querySelectorAll('button')],index=buttons.indexOf(event.target);
+  if(index<0)return;
+  event.preventDefault();
+  const step={ArrowLeft:-1,ArrowRight:1}[event.key]||0;
+  const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:Math.max(0,Math.min(buttons.length-1,index+step));
+  buttons.forEach((button,i)=>button.tabIndex=i===next?0:-1);buttons[next].focus({preventScroll:true});
+});
+$('themeButton').addEventListener('click',()=>setPreference({theme:model.prefs.theme==='dark'?'light':'dark'}));
 for (const [id, delta] of [['smallerButton', -1], ['largerButton', 1]]) $(id).addEventListener('click', () => setPreference({fontSize:Math.min(24,Math.max(13,model.prefs.fontSize+delta))}));
 $('pinButton').addEventListener('click', async () => {
-  try { pinned = await request('pin', !pinned); $('pinButton').setAttribute('aria-pressed', String(pinned)); } catch (error) { showError(error); }
+  try {
+    pinned = await request('pin', !pinned);
+    $('pinButton').setAttribute('aria-pressed', String(pinned));
+    const glyph=JotDesign.icon('pin');
+    if(pinned)glyph.querySelector('path:last-child').setAttribute('fill','currentColor');
+    $('pinButton').replaceChildren(glyph);
+    $('pinButton').title=pinned?'Unpin note':'Keep note on top';
+    $('pinButton').setAttribute('aria-label',$('pinButton').title);
+  } catch (error) { showError(error); }
 });
 async function leave(action) { try { await saveNow(); await request(action); } catch (error) { showError(error); } }
-$('closeAppButton').addEventListener('click',async()=>{
-  const button=$('closeAppButton');if(button.disabled)return;
-  button.disabled=true;button.setAttribute('aria-busy','true');button.title='Saving notes and closing…';
-  try{await saveNow();await request('quit');}
-  catch(error){button.disabled=false;button.setAttribute('aria-busy','false');button.title='Save notes and quit Jot';showError(error);}
-});
 $('hideButton').addEventListener('click', () => leave('hide'));
-$('quitButton').addEventListener('click', () => leave('quit'));
+$('deleteButton').onclick=()=>{closePanels();$('deleteError').hidden=true;$('deleteDialog').showModal();$('deleteCancel').focus();};
+$('deleteCancel').onclick=()=>$('deleteDialog').close();
+$('deleteDialog').addEventListener('cancel',event=>{if(deleting)event.preventDefault();});
+$('deleteDialog').addEventListener('close',()=>{if(!deleting)editor.focus();});
+$('deleteConfirm').onclick=async()=>{
+  if(deleting)return;
+  if(imageBusy){$('deleteError').textContent='Wait for the image to finish inserting, then try again.';$('deleteError').hidden=false;return;}
+  deleting=true;editor.contentEditable='false';$('deleteError').hidden=true;
+  $('deleteConfirm').disabled=$('deleteCancel').disabled=true;
+  $('deleteConfirm').setAttribute('aria-busy','true');$('deleteConfirm').textContent='Deleting…';
+  try{await saveNow();await request('note-delete',model.activeId);}
+  catch(error){
+    JotBridge.reportError(error,'note-delete');$('deleteError').textContent='The note could not be deleted. Your note is still available. '+JotI18n.text(error.message);$('deleteError').hidden=false;
+    deleting=false;editor.contentEditable='true';$('deleteConfirm').disabled=$('deleteCancel').disabled=false;
+    $('deleteConfirm').setAttribute('aria-busy','false');$('deleteConfirm').textContent='Delete note';
+  }
+};
 $('imageButton').addEventListener('pointerdown', () => rememberSelection());
 $('imageButton').addEventListener('click', () => $('imageInput').click());
 $('imageInput').addEventListener('change', () => { insertImages([...$('imageInput').files]).catch(showError); $('imageInput').value = ''; });
 $('exportButton').addEventListener('click', async () => {
+  closePanels();
   try { await saveNow(); await request('export', { name: noteName(activeNote()), html: sanitizeHtml(editor.innerHTML) }); } catch (error) { showError(error); }
 });
 $('handle').addEventListener('pointerdown', (event) => {
@@ -444,9 +562,10 @@ $('handle').addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('pointerdown', (event) => {
   if(!event.target.closest('#formatBar,.format-popover'))closeFormatMenus();
-  if (event.target.closest('#editor')) { $('menu').hidden = true; $('menuButton').setAttribute('aria-expanded', 'false'); }
+  if (!event.target.closest('#menu,#menuButton')) setNoteMenuVisible(false);
 });
 document.addEventListener('keydown', (event) => {
+  if($('deleteDialog').open)return;
   if (event.isComposing) return;
   const ctrl = event.ctrlKey || event.metaKey;
   if (ctrl && event.code === 'KeyK') { event.preventDefault(); if (!$('notesDialog').open) openNotes(); }
@@ -457,12 +576,22 @@ document.addEventListener('keydown', (event) => {
   else if (ctrl && editor.contains(document.activeElement) && ['KeyB','KeyI','KeyU'].includes(event.code)) { event.preventDefault(); command({KeyB:'bold',KeyI:'italic',KeyU:'underline'}[event.code]); }
   else if (event.key === 'Escape' && !$('notesDialog').open) {
     event.preventDefault();
-    if (!$('menu').hidden||document.querySelector('.format-popover:not([hidden])')) closePanels(); else leave('hide');
+    if(!$('menu').hidden){closePanels();$('menuButton').focus({preventScroll:true});}
+    else if(document.querySelector('.format-popover:not([hidden])'))closePanels();
+    else leave('hide');
   }
 });
 async function boot() {
   editor.contentEditable='false';loadIcons();
-  $('handle').after($('formatBar'));
+  const colorOrder=['crimson','red','orange','amber','yellow','lime','green','emerald','teal','cyan','sky','blue','indigo','violet','purple','fuchsia','pink','rose','neutral'];
+  const rank=slug=>{const index=colorOrder.indexOf(slug);return index<0?colorOrder.length:index;};
+  const accents=[...JotAccents].sort((a,b)=>rank(a.slug)-rank(b.slug));
+  $('noteColors').style.setProperty('--note-color-count',accents.length);
+  for(const accent of accents){
+    const button=document.createElement('button');button.className='note-color';button.dataset.noteColor=accent.slug;
+    button.title=button.ariaLabel=accent.slug[0].toUpperCase()+accent.slug.slice(1);button.append(JotDesign.icon('check'));
+    button.onclick=()=>setNoteColor(accent.slug);$('noteColors').append(button);
+  }
   const context=await request('context');
   app.dataset.activeWindow=String(!!context.active);
   setInputDirection(context.inputDirection);

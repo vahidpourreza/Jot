@@ -19,7 +19,7 @@ internal static class AppIcon
     }
     internal static byte[] RenderMonochrome(bool lightBackground, bool staticFile = false)
     {
-        int[] sizes = [128,64,48,32,24,16];
+        int[] sizes = [256,128,64,48,32,24,20,16];
         var pngs=new List<byte[]>();
         foreach(int size in sizes)
         {
@@ -28,16 +28,16 @@ internal static class AppIcon
             graphics.SmoothingMode=SmoothingMode.AntiAlias;
             graphics.ScaleTransform(size/24f,size/24f);
             var ink=lightBackground?Color.FromArgb(30,30,30):Color.FromArgb(245,245,245);
-            using var pen=new Pen(ink,2);
-            pen.StartCap=pen.EndCap=LineCap.Round;pen.LineJoin=LineJoin.Round;
+            using var shape=NoteShape();
+            using var brush=new SolidBrush(ink);
             if(staticFile)
             {
                 // A subtle opposite-color keyline keeps Explorer's fixed icon legible
                 // on either background; the live tray uses a single adaptive stroke.
-                using var halo=new Pen(Color.FromArgb(225,255,255,255),2.9f){StartCap=LineCap.Round,EndCap=LineCap.Round,LineJoin=LineJoin.Round};
-                DrawNotepad(graphics,halo);
+                using var halo=new Pen(Color.FromArgb(235,255,255,255),1.2f){LineJoin=LineJoin.Round};
+                graphics.DrawPath(halo,shape);
             }
-            DrawNotepad(graphics,pen);
+            graphics.FillPath(brush,shape);
             using var buffer=new MemoryStream();bitmap.Save(buffer,ImageFormat.Png);pngs.Add(buffer.ToArray());
         }
         using var output=new MemoryStream();using var writer=new BinaryWriter(output);
@@ -45,21 +45,25 @@ internal static class AppIcon
         int offset=6+16*sizes.Length;
         for(int i=0;i<sizes.Length;i++)
         {
-            writer.Write((byte)sizes[i]);writer.Write((byte)sizes[i]);writer.Write((byte)0);writer.Write((byte)0);
+            byte encoded=sizes[i]==256?(byte)0:(byte)sizes[i];
+            writer.Write(encoded);writer.Write(encoded);writer.Write((byte)0);writer.Write((byte)0);
             writer.Write((ushort)1);writer.Write((ushort)32);writer.Write((uint)pngs[i].Length);writer.Write((uint)offset);
             offset+=pngs[i].Length;
         }
         foreach(var png in pngs)writer.Write(png);
         return output.ToArray();
     }
-    private static void DrawNotepad(Graphics graphics,Pen pen)
+    private static GraphicsPath NoteShape()
     {
-        // Lucide notepad-text, original 24x24 geometry (ISC).
-        graphics.DrawLine(pen,8,2,8,6);graphics.DrawLine(pen,12,2,12,6);graphics.DrawLine(pen,16,2,16,6);
-        using var rectangle=new GraphicsPath();
-        rectangle.AddArc(4,4,4,4,180,90);rectangle.AddArc(16,4,4,4,270,90);
-        rectangle.AddArc(16,18,4,4,0,90);rectangle.AddArc(4,18,4,4,90,90);rectangle.CloseFigure();
-        graphics.DrawPath(pen,rectangle);
-        graphics.DrawLine(pen,8,10,14,10);graphics.DrawLine(pen,8,14,16,14);graphics.DrawLine(pen,8,18,13,18);
+        // Original Jot folded-note mark. Broad negative-space lines stay legible at 16px.
+        var shape=new GraphicsPath(FillMode.Alternate);
+        shape.AddLine(5,2,13,2);shape.AddLine(13,2,13,8);
+        shape.AddBezier(13,8,13,9.1f,13.9f,10,15,10);shape.AddLine(15,10,21,10);
+        shape.AddLine(21,10,21,20);shape.AddArc(17,18,4,4,0,90);
+        shape.AddLine(19,22,5,22);shape.AddArc(3,18,4,4,90,90);
+        shape.AddLine(3,20,3,4);shape.AddArc(3,2,4,4,180,90);shape.CloseFigure();
+        shape.AddRectangle(new RectangleF(7,12,10,2));shape.AddRectangle(new RectangleF(7,16,7,2));
+        shape.AddPolygon([new PointF(15,2),new PointF(21,8),new PointF(15,8)]);
+        return shape;
     }
 }

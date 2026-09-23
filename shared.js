@@ -40,10 +40,10 @@ window.JotDesign = {
     const context=canvas.getContext('2d',{willReadFrequently:true});context.fillStyle=value;context.fillRect(0,0,1,1);
     return '#'+[...context.getImageData(0,0,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');
   },
-  defaults: {theme:'dark',fontSize:16,accent:'crimson',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en'},
+  defaults: {theme:'dark',fontSize:16,accent:'neutral',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en'},
   apply(prefs) {
     const p = {...this.defaults,...prefs};
-    p.language='en';JotI18n.apply('en');
+    p.language='en';p.accent='neutral';p.coloredIcons=false;JotI18n.apply('en');
     const root = document.documentElement;
     const accent = window.JotAccents.find(item=>item.slug===p.accent) || window.JotAccents[0];
     const mode = p.theme==='light' ? 'light' : 'dark';
@@ -59,13 +59,20 @@ window.JotDesign = {
     if(key!==this.nativeThemeKey){this.nativeThemeKey=key;JotBridge.request('theme',native).catch(()=>{this.nativeThemeKey='';});}
     return p;
   },
+  noteColor(slug) {
+    const accent=JotAccents.find(item=>item.slug===slug)||JotAccents.find(item=>item.slug==='neutral');
+    const mode=document.documentElement.dataset.theme==='light'?'light':'dark';
+    return {...accent[mode],slug:accent.slug};
+  },
   icon(name) {
     const element = document.createElementNS('http://www.w3.org/2000/svg','svg');
     element.setAttribute('viewBox','0 0 24 24');
     element.setAttribute('fill','none'); element.setAttribute('stroke','currentColor');
     element.setAttribute('stroke-linecap','round'); element.setAttribute('stroke-linejoin','round');
     element.setAttribute('aria-hidden','true'); element.classList.add('lucide');
-    element.innerHTML = window.JotIconPaths[name] || window.JotIconPaths['notepad-text'];
+    if(name==='jot')element.innerHTML='<path fill="currentColor" stroke="none" fill-rule="evenodd" d="M5 2h8v6a2 2 0 0 0 2 2h6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM7 12v2h10v-2Zm0 4v2h7v-2ZM15 2l6 6h-6Z"/>';
+    else if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
+    else element.innerHTML = window.JotIconPaths[name] || window.JotIconPaths['notepad-text'];
     return element;
   },
   icons(root=document) {

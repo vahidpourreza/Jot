@@ -53,7 +53,7 @@ public partial class MainWindow : Window
         this.session = session; Mode = mode; NoteId = noteId; this.runTests = runTests;
         testing = session.Testing; testOutput = session.Output; store = session.Store;
         InitializeComponent();
-        ShowInTaskbar=false;
+        ShowInTaskbar=!testing;
         Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(23,23,23);
         UpdateNativeIcon();
         if (mode == "home") { Width = 820; Height = 650; MinWidth = 520; MinHeight = 420; }
@@ -125,7 +125,7 @@ public partial class MainWindow : Window
     private void RoundWindow()
     {
         if (Browser is null || ActualWidth < 20 || ActualHeight < 20) return;
-        Browser.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth-18), Math.Max(0, ActualHeight-18)), 13, 13);
+        Browser.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth-18), Math.Max(0, ActualHeight-18)), 5, 5);
     }
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RoundWindow();
 
@@ -228,6 +228,17 @@ public partial class MainWindow : Window
                 case "home": session.Home(payload.ValueKind == JsonValueKind.True); break;
                 case "settings": session.Settings(); break;
                 case "note-metadata": await store.SaveMetadata(payload); await session.Changed(); result = true; break;
+                case "note-delete":
+                    if (Mode != "note" || payload.GetString() != NoteId) throw new InvalidDataException("Delete a note from its own window.");
+                    await Flush();
+                    await store.Delete(NoteId!);
+                    // Once committed, a notification failure must not masquerade as a failed deletion.
+                    try { await session.Changed(); }
+                    catch (Exception ex) { session.Log.Error("delete-notification", ex, Mode); }
+                    result = true;
+                    // Reply before disposing this WebView. No other window is revealed or closed.
+                    _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
+                    break;
                 case "save":
                     if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
                     await store.SaveNote(payload); await session.Changed(); result = true; break;
@@ -249,6 +260,7 @@ public partial class MainWindow : Window
                     if (!testing) { if (Mode == "image") _ = Dispatcher.BeginInvoke(ClosePermanently); else Hide(); }
                     break;
                 case "quit":
+                    if (Mode == "note") throw new InvalidOperationException("Quit Jot from Home, Settings, or the tray.");
                     if (testing) await session.FlushNotes();
                     else _ = Dispatcher.InvokeAsync(async () => { try { await session.Quit(); } catch (Exception ex) { session.Log.Error("quit",ex,Mode);Post(new { @event = "quit-failed", message = ex.Message }); } });
                     break;

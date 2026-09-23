@@ -65,7 +65,15 @@ internal sealed class JotSession(bool testing, string output)
         foreach (var window in Windows.ToArray())
         {
             if (data is not null)
+            {
                 window.Post(new { @event = "preferences", prefs = data.Value.GetProperty("prefs") });
+                if (window.Mode == "note")
+                {
+                    var note = data.Value.GetProperty("notes").EnumerateArray().FirstOrDefault(n => n.GetProperty("id").GetString() == window.NoteId);
+                    if (note.ValueKind == JsonValueKind.Object)
+                        window.Post(new { @event = "note-color", color = note.GetProperty("color").GetString() });
+                }
+            }
             if (window.Mode == "home") window.Post(new { @event = "notes-changed" });
         }
     }

@@ -1,25 +1,27 @@
 Add-Type -AssemblyName System.Drawing
 $iconPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\assets\jot.ico'))
 $bitmaps = [Collections.Generic.List[byte[]]]::new()
-$sizes = @(16, 24, 32, 48, 64, 128, 256)
+$sizes = @(16, 20, 24, 32, 48, 64, 128, 256)
 foreach ($size in $sizes) {
     $bitmap = [Drawing.Bitmap]::new($size, $size)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $graphics.ScaleTransform($size / 24.0, $size / 24.0)
-    $shape = [Drawing.Drawing2D.GraphicsPath]::new()
-    $shape.AddArc(4, 4, 4, 4, 180, 90); $shape.AddArc(16, 4, 4, 4, 270, 90)
-    $shape.AddArc(16, 18, 4, 4, 0, 90); $shape.AddArc(4, 18, 4, 4, 90, 90)
+    $shape = [Drawing.Drawing2D.GraphicsPath]::new([Drawing.Drawing2D.FillMode]::Alternate)
+    $shape.AddLine(5,2,13,2); $shape.AddLine(13,2,13,8)
+    $shape.AddBezier(13,8,13,9.1,13.9,10,15,10); $shape.AddLine(15,10,21,10)
+    $shape.AddLine(21,10,21,20); $shape.AddArc(17,18,4,4,0,90)
+    $shape.AddLine(19,22,5,22); $shape.AddArc(3,18,4,4,90,90)
+    $shape.AddLine(3,20,3,4); $shape.AddArc(3,2,4,4,180,90)
     $shape.CloseFigure()
-    foreach($layer in @(@('#ffffff',2.9),@('#1e1e1e',2.0))) {
-        $pen = [Drawing.Pen]::new([Drawing.ColorTranslator]::FromHtml($layer[0]),[single]$layer[1])
-        $pen.StartCap = $pen.EndCap = [Drawing.Drawing2D.LineCap]::Round
-        $pen.LineJoin = [Drawing.Drawing2D.LineJoin]::Round
-        $graphics.DrawLine($pen,8,2,8,6); $graphics.DrawLine($pen,12,2,12,6); $graphics.DrawLine($pen,16,2,16,6)
-        $graphics.DrawPath($pen,$shape)
-        $graphics.DrawLine($pen,8,10,14,10); $graphics.DrawLine($pen,8,14,16,14); $graphics.DrawLine($pen,8,18,13,18)
-        $pen.Dispose()
-    }
+    $shape.AddRectangle([Drawing.RectangleF]::new(7,12,10,2)); $shape.AddRectangle([Drawing.RectangleF]::new(7,16,7,2))
+    $shape.AddPolygon([Drawing.PointF[]]@([Drawing.PointF]::new(15,2),[Drawing.PointF]::new(21,8),[Drawing.PointF]::new(15,8)))
+    $halo=[Drawing.Pen]::new([Drawing.Color]::FromArgb(235,255,255,255),[single]1.2)
+    $halo.LineJoin=[Drawing.Drawing2D.LineJoin]::Round
+    $graphics.DrawPath($halo,$shape)
+    $brush=[Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(30,30,30))
+    $graphics.FillPath($brush,$shape)
+    $halo.Dispose(); $brush.Dispose()
     $memory = [IO.MemoryStream]::new()
     $bitmap.Save($memory, [Drawing.Imaging.ImageFormat]::Png)
     $bitmaps.Add($memory.ToArray())

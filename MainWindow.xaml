@@ -5,10 +5,10 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Jot" Width="480" Height="460" MinWidth="320" MinHeight="250"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        ShowInTaskbar="False" Topmost="False" ResizeMode="CanResize"
+        ShowInTaskbar="True" Topmost="False" ResizeMode="CanResize"
         Loaded="OnLoaded" Closing="OnClosing" SizeChanged="OnSizeChanged">
   <Grid x:Name="WindowRoot">
-    <Border x:Name="Surface" Margin="8" CornerRadius="14" Background="#171717" BorderBrush="#30808080" BorderThickness="1">
+    <Border x:Name="Surface" Margin="8" CornerRadius="6" Background="#171717" BorderBrush="#30808080" BorderThickness="1">
       <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.22"/></Border.Effect>
     </Border>
     <wv2:WebView2CompositionControl x:Name="Browser" Margin="9" UseLayoutRounding="False"/>
