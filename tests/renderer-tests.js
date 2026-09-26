@@ -134,7 +134,7 @@
     $('hideButton').click();
     for(let i=0;i<100&&app.dataset.saveState!=='saved';i++)await sleep(15);
     const disk=await request('load');
-    assert(disk.notes.some(note=>note.id===id&&note.html.includes('Hide-note save sentinel')),'X did not save the note');
+    assert(disk.notes.some(note=>{if(note.id!==id||!note.plain.includes('Hide-note save sentinel'))return false;const content=document.createElement('div');content.innerHTML=note.html;return content.textContent.includes('Hide-note save sentinel');}),'X did not save the note');
     let rejected=false;try{await request('quit');}catch{rejected=true;}
     assert(rejected,'note window was allowed to quit the app');
   });
@@ -153,7 +153,7 @@
     write('<p>Unchanged paragraph</p><p>English</p><pre><code>code</code></pre>');
     const first=editor.firstElementChild,second=first.nextElementSibling;
     const observed=new MutationObserver(()=>{});observed.observe(first,{attributes:true,subtree:true});
-    second.firstChild.data='سلام English';onEdit();
+    second.textContent='سلام English';onEdit();
     assert(getComputedStyle(second).direction==='rtl','edited paragraph direction');
     assert(observed.takeRecords().length===0,'typing rewrote an unrelated paragraph');observed.disconnect();
     setInputDirection('ltr');second.replaceChildren(document.createElement('br'));onEdit();
@@ -204,21 +204,78 @@
     finally{root.style.cssText=original;root.dataset.theme=theme;}
   });
   await test('bullet-list-undo-redo',()=>{write('<p>List item</p>');select('List item');document.querySelector('[data-command=insertUnorderedList]').click();assert(editor.querySelector('ul li'),'list');undo();assert(!editor.querySelector('ul'),'undo');undo(true);assert(editor.querySelector('ul'),'redo');});
-  await test('paste-keeps-tables-and-formatting-removes-active-content',async()=>{const data=new DataTransfer();data.setData('text/html','<p>Before <b>bold</b></p><table><tr><th>Head</th><th>عنوان</th></tr><tr><td colspan="2">Body</td></tr></table><script>evil()</script><p onclick="evil()">After</p>');editor.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));await sleep(80);assert(editor.querySelector('table th')&&editor.querySelector('td[colspan="2"]'),'table structure lost');assert(!editor.querySelector('script,[onclick]'),'unsafe markup retained');});
+  await test('rapid-typing-history-is-deferred-but-immediate-undo-keeps-every-key',()=>{
+    flushTypingHistory();editor.innerHTML='<p>Start</p>';onEdit('command');
+    const before=histories.get(model.activeId).values.length;
+    for(let i=0;i<20;i++){editor.firstElementChild.firstChild.appendData('x');onEdit();}
+    assert(typingHistoryPending&&histories.get(model.activeId).values.length===before,'typing serialized undo on each key');
+    undo();assert(editor.textContent==='Start','immediate Undo did not flush latest typing');
+    undo(true);assert(editor.textContent==='Start'+'x'.repeat(20),'Redo lost typed characters');
+  });
+  await test('format-command-flushes-pending-typing-before-recording-format',()=>{
+    flushTypingHistory();editor.innerHTML='<p>Base</p>';onEdit('command');
+    editor.firstElementChild.append(document.createTextNode(' typed'));onEdit();select('typed');command('bold');
+    undo();assert(editor.textContent==='Base typed'&&!/<b>|font-weight/.test(editor.innerHTML),'format Undo lost pending text');
+    undo();assert(editor.textContent==='Base','typing Undo did not return to prior content');
+  });
+  await test('normal-paste-prefers-plain-text-over-colored-code-html',async()=>{
+    write('<p><br></p>');bookmark=null;
+    const data=new DataTransfer(),plain='const tag = "<b>";\r\n\tprint(tag);\r\n\r\nسلام English';
+    data.setData('text/plain',plain);data.setData('text/html','<pre style="background:#000;color:#ff0000;font-family:monospace;font-size:28px"><code><span style="color:blue">WRONG HTML VERSION</span></code></pre>');
+    editor.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));await sleep(80);
+    assert(!editor.querySelector('pre,code,font,h1,h2,b,strong,mark'),'imported source markup');
+    const lines=[...editor.querySelectorAll('p')];
+    assert(lines.length===4&&lines[0].textContent==='const tag = "<b>";'&&lines[1].textContent==='\tprint(tag);'&&lines[2].textContent===''&&lines[3].textContent==='سلام English','plain text/indentation/blank lines changed');
+    assert(!editor.innerHTML.includes('WRONG HTML VERSION')&&!editor.querySelector('[style]'),'source styles leaked');
+    assert(getComputedStyle(lines[0]).direction==='ltr'&&getComputedStyle(lines[3]).direction==='rtl','plain paste lost bilingual direction');
+    await saveNow();assert(activeNote().plain.includes('print(tag)'),'plain paste not saved');
+    undo();assert(!editor.textContent.trim(),'paste Undo failed');undo(true);assert(editor.textContent.includes('print(tag)'),'paste Redo failed');
+  });
+  await test('html-only-paste-flattens-tables-styles-and-active-content',async()=>{
+    write('<p><br></p>');bookmark=null;
+    const data=new DataTransfer();data.setData('text/html','<h2 style="color:red">Heading</h2><p>Before <b>bold</b></p><table><tr><th>Head</th><th>عنوان</th></tr><tr><td colspan="2">Body</td></tr></table><script>evil()</script><style>p{color:red}</style><p onclick="evil()">After</p>');
+    await paste(new ClipboardEvent('paste',{clipboardData:data}));
+    assert(editor.textContent.includes('Heading')&&editor.textContent.includes('Before bold')&&editor.textContent.includes('Head\tعنوان')&&editor.textContent.includes('After'),'visible text/cell separators lost');
+    assert(!editor.querySelector('table,th,td,h2,b,script,style,[style],[onclick]')&&!editor.textContent.includes('evil()'),'formatted or active markup retained');
+  });
+  await test('html-only-code-becomes-ordinary-text-with-indentation',async()=>{
+    write('<p><br></p>');bookmark=null;
+    const data=new DataTransfer();data.setData('text/html','<pre style="background:black"><code><span style="color:red">if (ok) {</span>\n  run();\n\n}</code></pre>');await paste(new ClipboardEvent('paste',{clipboardData:data}));
+    const lines=[...editor.querySelectorAll('p')].map(p=>p.textContent);
+    assert(JSON.stringify(lines)===JSON.stringify(['if (ok) {','  run();','','}']),'code whitespace lost');
+    assert(!editor.querySelector('pre,code,span,[style]'),'code appearance retained');
+  });
+  await test('plain-paste-escapes-html-and-normalizes-all-line-endings',async()=>{
+    write('<p><br></p>');bookmark=null;const data=new DataTransfer();data.setData('text/plain','<b>literal & فارسی</b>\rsecond\nthird\r\nfourth');
+    await paste(new ClipboardEvent('paste',{clipboardData:data}));
+    assert(!editor.querySelector('b')&&editor.querySelectorAll('p').length===4&&editor.firstElementChild.textContent==='<b>literal & فارسی</b>','literal text interpreted as markup or lines lost');
+  });
+  await test('empty-clipboard-does-not-change-note',async()=>{
+    const html=editor.innerHTML,version=revision;await paste(new ClipboardEvent('paste',{clipboardData:new DataTransfer()}));
+    assert(editor.innerHTML===html&&revision===version,'empty paste changed note');
+  });
   let sample;
-  await test('pasted-heading-levels-and-code-structure',()=>{const html=sanitizeHtml('<h1>Title</h1><h3>Subheading</h3><pre><code>if (ok) {\n  run();\n}</code></pre>');const root=document.createElement('div');root.innerHTML=html;assert(root.querySelector('h1')&&root.querySelector('h3'),'heading hierarchy lost');assert(root.querySelector('code').textContent.includes('  run();'),'code whitespace lost');});
-  await test('rich-paste-html-plus-image-preserves-order',async()=>{
+  await test('stored-heading-levels-and-code-structure-remain-supported',()=>{const html=sanitizeHtml('<h1>Title</h1><h3>Subheading</h3><pre><code>if (ok) {\n  run();\n}</code></pre>');const root=document.createElement('div');root.innerHTML=html;assert(root.querySelector('h1')&&root.querySelector('h3'),'heading hierarchy lost');assert(root.querySelector('code').textContent.includes('  run();'),'code whitespace lost');});
+  await test('plain-text-with-images-preserves-order-without-source-formatting',async()=>{
     const canvas=document.createElement('canvas');canvas.width=600;canvas.height=200;const c=canvas.getContext('2d');c.fillStyle='#27272a';c.fillRect(0,0,600,200);c.fillStyle='#60a5fa';c.fillRect(26,28,5,140);c.fillStyle='#fff';c.font='25px sans-serif';c.fillText('An image inside your note',55,90);c.font='18px sans-serif';c.fillText('Click the thumbnail to see the original.',55,130);
     sample=canvas.toDataURL('image/png');const blob=await new Promise(resolve=>canvas.toBlob(resolve));
     write('<p></p>');editor.focus();bookmark=null;
-    const data=new DataTransfer();data.setData('text/html','<p>Meeting notes</p><p>یادداشت فارسی با English</p><img src="cid:sample"><table><tr><td>Keep</td><td>Structure</td></tr></table><p>After image</p>');data.items.add(new File([blob],'sample.png',{type:'image/png'}));
+    const data=new DataTransfer();data.setData('text/html','<p style="color:red"><b>Meeting notes</b></p><p>یادداشت فارسی با English</p><img src="cid:sample"><table><tr><td>Keep</td><td>Structure</td></tr></table><p style="font-family:monospace;background:black">After image</p>');data.items.add(new File([blob],'sample.png',{type:'image/png'}));
     editor.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));
     for(let i=0;i<100&&!editor.querySelector('img');i++)await sleep(30);
     assert(editor.textContent.includes('Meeting notes')&&editor.textContent.includes('After image'),'text discarded when bitmap present');
-    assert(editor.querySelector('img')&&editor.querySelector('table'),'image/table lost');
+    assert(editor.querySelector('img')&&editor.textContent.includes('Keep\tStructure'),'image/table text lost');
+    assert(!editor.querySelector('table,b,[style],pre,code'),'source formatting retained in mixed paste');
+    assert(editor.innerHTML.indexOf('Meeting notes')<editor.innerHTML.indexOf('<img')&&editor.innerHTML.indexOf('<img')<editor.innerHTML.indexOf('After image'),'mixed paste reordered content');
     await editor.querySelector('img').decode();await saveNow();
   });
   await test('image-thumbnail-keeps-original-resolution',()=>{const image=editor.querySelector('img');const rect=image.getBoundingClientRect();assert(rect.width<=74&&rect.height<=50,'preview too big');assert(image.naturalWidth===600,'original shrunk');image.click();});
+  await test('image-only-clipboard-still-pastes-original-thumbnail',async()=>{
+    const previous=editor.innerHTML;write('<p><br></p>');bookmark=null;
+    const data=new DataTransfer(),bytes=Uint8Array.from(atob(sample.split(',')[1]),c=>c.charCodeAt(0));data.items.add(new File([bytes],'only-image.png',{type:'image/png'}));
+    await paste(new ClipboardEvent('paste',{clipboardData:data}));const image=editor.querySelector('img');assert(image,'image-only paste dropped');await image.decode();
+    assert(image.naturalWidth===600&&image.src===sample&&image.getBoundingClientRect().width<=74,'image paste changed original or thumbnail sizing');write(previous);await saveNow();
+  });
   await test('file-image-inserts-inline-without-forcing-new-paragraph',async()=>{
     const previous=editor.innerHTML;
     write('<p>Before After</p>');select('After');getSelection().getRangeAt(0).collapse(true);rememberSelection();
@@ -228,6 +285,8 @@
     write(previous);await saveNow();
   });
   await test('copy-everything-html-text-images-and-table',async()=>{
+    // Existing rich notes must keep full-fidelity Copy even though new paste is plain.
+    editor.insertAdjacentHTML('beforeend','<table><tr><td>Existing</td><td>Table</td></tr></table>');onEdit('command');
     const range=document.createRange();range.selectNodeContents(editor);getSelection().removeAllRanges();getSelection().addRange(range);
     const data=new DataTransfer();editor.dispatchEvent(new ClipboardEvent('copy',{clipboardData:data,bubbles:true,cancelable:true}));
     const html=data.getData('text/html');assert(html.includes('<table')&&html.includes('data:image/png')&&html.includes('Meeting notes'),'copy lost structure/image');assert(data.getData('text/plain').includes('After image'),'plain fallback missing');

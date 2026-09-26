@@ -15,11 +15,13 @@ public partial class MainWindow
               const original=editor.innerHTML, samples=[];
               editor.innerHTML=Array.from({length:1800},(_,i)=>'<p>Line '+i+' — mixed فارسی text for typing.</p>').join('');
               normalizeDirection();updateEmpty();historyRecord('command');
-              const target=editor.lastElementChild.firstChild;
+              let target=editor.lastElementChild.firstChild;
+              while(target.firstChild)target=target.firstChild;
               const range=document.createRange();range.selectNodeContents(target);range.collapse(false);
               getSelection().removeAllRanges();getSelection().addRange(range);
               for(let i=0;i<24;i++){
                 await new Promise(r=>setTimeout(r,20));
+                const walker=document.createTreeWalker(editor.lastElementChild,NodeFilter.SHOW_TEXT);let next;while(next=walker.nextNode())target=next;
                 const start=performance.now();target.appendData('x');
                 editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));
                 samples.push(performance.now()-start);clearTimeout(saveTimer);

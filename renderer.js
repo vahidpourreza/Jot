@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const editor = $('editor'), app = $('app'), request = JotBridge.request;
 let model = {version:2,activeId:null,notes:[],prefs:{...JotDesign.defaults}};
 let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer;
+let historyTimer=0,typingHistoryPending=false;
 let saveChain=Promise.resolve(),bookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
 let inputDirection='rtl',deleting=false;
 let noteMenuAnimation=null,toolbarAnimation=null,colorMenuAnimation=null,toolbarShown=null;
@@ -13,7 +14,7 @@ const histories=new Map();
 const EMPTY='<p dir="auto"><br></p>';
 const blockSelector='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,table,td,th';
 const imagePattern=/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
-const allowedTags=new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','STRIKE','SPAN','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','IMG','A','FONT','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION','HR','MARK','SUB','SUP','FIGURE','FIGCAPTION']);
+const allowedTags=new Set(['P','DIV','BR','B','BDI','STRONG','I','EM','U','S','STRIKE','SPAN','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','IMG','A','FONT','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION','HR','MARK','SUB','SUP','FIGURE','FIGCAPTION']);
 const discardTags=new Set(['SCRIPT','STYLE','IFRAME','OBJECT','SVG','MATH','FORM','INPUT','BUTTON','VIDEO','AUDIO','LINK','META','TEMPLATE']);
 let directionChanges=[];
 const directionObserver=new MutationObserver(records=>directionChanges.push(...records));
@@ -55,7 +56,46 @@ function escapeHtml(value) {
   return element.innerHTML;
 }
 function plainToHtml(value) {
-  return String(value || '').split(/\r?\n/).map((line) => '<p dir="auto">' + (escapeHtml(line) || '<br>') + '</p>').join('');
+  return String(value || '').split(/\r\n?|\n/).map((line) => '<p dir="auto">' + (escapeHtml(line) || '<br>') + '</p>').join('');
+}
+// HTML is only a fallback for text, or a map of where embedded images belong.
+// Never import its colors, fonts, code containers, backgrounds or active content.
+function unformattedClipboardHtml(root) {
+  const output=document.createElement('div');
+  const blocks=new Set('ADDRESS ARTICLE ASIDE BLOCKQUOTE DIV DL DT DD FIGURE FIGCAPTION FOOTER H1 H2 H3 H4 H5 H6 HEADER HR LI MAIN OL P PRE SECTION TABLE TR UL'.split(' '));
+  let paragraph=null,boundary=false;
+  function newLine(){paragraph=document.createElement('p');paragraph.dir='auto';output.append(paragraph);}
+  function prepare(){if(!paragraph)newLine();else if(boundary&&paragraph.hasChildNodes())newLine();boundary=false;}
+  function text(value,preserve=false){
+    if(!preserve)value=value.replace(/[\t\r\n ]+/g,' ');
+    if(!value||(!preserve&&!value.trim()&&(!paragraph||boundary)))return;
+    prepare();
+    value.split(/\r\n?|\n/).forEach((line,index)=>{if(index)newLine();if(line)paragraph.append(document.createTextNode(line));});
+  }
+  function walk(node,preserve=false){
+    if(node.nodeType===Node.TEXT_NODE){text(node.textContent,preserve);return;}
+    if(node.nodeType!==Node.ELEMENT_NODE||discardTags.has(node.tagName))return;
+    const tag=node.tagName;
+    if(tag==='IMG'){
+      const src=node.getAttribute('src')||'';
+      if(!imagePattern.test(src)||src.length>12*1024*1024)return;
+      prepare();const image=document.createElement('img');image.src=src;image.alt=(node.getAttribute('alt')||JotI18n.text('تصویر')).slice(0,200);paragraph.append(image);return;
+    }
+    if(tag==='BR'){prepare();newLine();return;}
+    if(blocks.has(tag))boundary=true;
+    if((tag==='TD'||tag==='TH')&&node.previousElementSibling?.matches('td,th'))text('\t',true);
+    if(tag==='LI'){
+      const list=node.parentElement;
+      const number=(Number(list?.getAttribute('start'))||1)+[...list.children].indexOf(node);
+      text(list?.tagName==='OL'?number+'. ':'• ',true);
+    }
+    const keepSpace=preserve||tag==='PRE'||tag==='CODE'||/^(pre|pre-wrap|break-spaces)$/.test(node.style.whiteSpace);
+    for(const child of node.childNodes)walk(child,keepSpace);
+    if(blocks.has(tag))boundary=true;
+  }
+  for(const node of root.childNodes)walk(node);
+  for(const line of output.children)if(!line.hasChildNodes())line.append(document.createElement('br'));
+  return output.innerHTML;
 }
 // Rebuild pasted/loaded markup from a small allowlist; no scripts, remote resources or event attributes.
 function sanitizeHtml(html) {
@@ -76,6 +116,12 @@ function sanitizeHtml(html) {
     for (const child of node.childNodes) element.append(clean(child));
     if (element.nodeType === Node.ELEMENT_NODE) {
       if (element.matches(blockSelector)) element.dir = 'auto';
+      if(element.matches(blockSelector)&&['ltr','rtl'].includes(node.dataset.jotDirection)){element.dataset.jotDirection=node.dataset.jotDirection;element.dir=node.dataset.jotDirection;}
+      if(element.matches(blockSelector)&&['ltr','rtl'].includes(node.dataset.jotNeutralDirection)){element.dataset.jotNeutralDirection=node.dataset.jotNeutralDirection;if(!element.dataset.jotDirection)element.dir=node.dataset.jotNeutralDirection;}
+      if(tag==='BDI'){
+        element.dir=['ltr','rtl','auto'].includes(node.dir)?node.dir:'auto';
+        if(node.dataset.jotBidi==='token')element.dataset.jotBidi='token';
+      }
       if (tag === 'PRE' || tag === 'CODE') element.dir = 'ltr';
       const color = node.style.color || node.getAttribute('color');
       if (color && CSS.supports('color', color) && !/var\(|url\(/i.test(color)) element.style.color = color;
@@ -102,6 +148,8 @@ function sanitizeHtml(html) {
   return container.innerHTML || EMPTY;
 }
 function normalizeDirection(full=true) {
+  if(composing)return;
+  bookmark=JotBidi.wrapLooseContent(editor,bookmark);
   const changes=directionChanges.concat(directionObserver.takeRecords());directionChanges=[];
   const blocks=new Set();
   if(full)editor.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
@@ -114,17 +162,14 @@ function normalizeDirection(full=true) {
       added.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
     }
   }
-  for(const block of blocks){
-    if(!editor.contains(block))continue;
-    if(block.matches('pre,code')){if(block.dir!=='ltr')block.dir='ltr';continue;}
-    const empty=!block.textContent.replace(/[\u200b\u200c\u200d\ufeff]/g,'').trim()&&!block.querySelector('img');
-    const dir=empty?inputDirection:'auto';
-    if(block.dir!==dir)block.dir=dir;
-    if(block.dataset.emptyBlock!==String(empty))block.dataset.emptyBlock=String(empty);
-  }
+  bookmark=JotBidi.normalize(editor,blocks,inputDirection,bookmark);
+  // Ignore our own structural wrappers; the next edit should visit only its
+  // affected blocks, not replay the whole normalization.
+  directionObserver.takeRecords();
 }
 function setInputDirection(direction) {
   inputDirection=direction==='rtl'?'rtl':'ltr';
+  if(composing)return;
   editor.dir=inputDirection;
   normalizeDirection();
 }
@@ -140,9 +185,8 @@ function capture() {
   note.plain = editor.innerText;
   note.updatedAt = Date.now();
 }
-function historyRecord(kind = 'command') {
+function historyRecord(kind = 'command',html=editor.innerHTML) {
   const id = model.activeId;
-  const html=editor.innerHTML;
   if (!histories.has(id)) histories.set(id, { values: [html], index: 0, time: 0, kind: '' });
   const h = histories.get(id);
   if (h.values[h.index] === html) return;
@@ -152,6 +196,11 @@ function historyRecord(kind = 'command') {
   else { h.values.push(html); h.index++; }
   if (h.values.length > 60) { h.values.shift(); h.index--; }
   h.time = Date.now(); h.kind = kind;
+}
+function flushTypingHistory(html) {
+  clearTimeout(historyTimer);historyTimer=0;
+  if(!typingHistoryPending)return;
+  typingHistoryPending=false;historyRecord('typing',html);
 }
 function queueSave() {
   revision++;
@@ -164,7 +213,14 @@ function onEdit(kind = 'typing') {
   normalizeDirection(false);
   updateEmpty();
   // Capture plain text (innerText forces layout) only at the save boundary.
-  historyRecord(kind);
+  // Embedded originals can be megabytes. Do not serialize them on every key.
+  // Commands, Undo and Save flush this pending snapshot synchronously.
+  if(kind==='typing'){
+    typingHistoryPending=true;
+    clearTimeout(historyTimer);historyTimer=setTimeout(()=>flushTypingHistory(),140);
+  }else{
+    clearTimeout(historyTimer);historyTimer=0;typingHistoryPending=false;historyRecord(kind);
+  }
   queueSave();
   app.classList.add('typing');
   clearTimeout(typingTimer);
@@ -175,6 +231,7 @@ function saveNow() {
   if (!ready) return Promise.reject(new Error('یادداشت‌ها هنوز آماده نیستند.'));
   if(revision<=savedRevision)return saveChain;
   capture();
+  flushTypingHistory(activeNote().html);
   const current = revision;
   const {id,html,plain,updatedAt}=activeNote();
   const snapshot = {id,html,plain,updatedAt};
@@ -207,6 +264,7 @@ function restoreSelection() {
   }
 }
 function command(name, value) {
+  flushTypingHistory();
   restoreSelection();
   document.execCommand('styleWithCSS', false, true);
   document.execCommand(name, false, value);
@@ -215,6 +273,7 @@ function command(name, value) {
   refreshToolbar();
 }
 function undo(redo = false) {
+  flushTypingHistory();
   const history = histories.get(model.activeId);
   if (!history) return;
   const index = history.index + (redo ? 1 : -1);
@@ -231,6 +290,7 @@ function closePanels() {
   keepFormatOpen = model.prefs.toolbarVisible !== false;
 }
 function selectNote(id) {
+  flushTypingHistory();
   if (ready) capture();
   const note = model.notes.find((item) => item.id === id);
   if (!note) return;
@@ -328,7 +388,39 @@ function refreshToolbar() {
     const color=document.queryCommandValue('foreColor');
     if(color&&CSS.supports('color',color))$('colorMenuButton').style.setProperty('--selected-text-color',color);
   }
+  refreshDirectionControls();
 }
+function selectedDirectionBlocks(){
+  const selection=getSelection(),range=bookmark||(selection.rangeCount?selection.getRangeAt(0):null);
+  if(!range||!editor.contains(range.commonAncestorContainer))return [];
+  if(range.collapsed){
+    const node=range.startContainer.nodeType===Node.ELEMENT_NODE?range.startContainer:range.startContainer.parentElement;
+    if(node===editor){
+      const atEnd=range.startOffset>=editor.childNodes.length,item=editor.childNodes[range.startOffset]||editor.lastElementChild;
+      if(!item||item.nodeType!==Node.ELEMENT_NODE||item.closest('pre,code'))return [];
+      if(item.matches(blockSelector)&&!item.querySelector(blockSelector))return [item];
+      const leaves=[...item.querySelectorAll(blockSelector)].filter(block=>!block.closest('pre,code')&&!block.querySelector(blockSelector));
+      const block=atEnd?leaves.at(-1):leaves[0];return block?[block]:[];
+    }
+    const block=node.closest(blockSelector);return block&&block!==editor&&editor.contains(block)&&!block.closest('pre,code')?[block]:[];
+  }
+  const candidates=[...editor.querySelectorAll(blockSelector)].filter(block=>!block.closest('pre,code')&&!block.querySelector(blockSelector));
+  return candidates.filter(block=>range.intersectsNode(block));
+}
+function refreshDirectionControls(){
+  if($('menu').hidden)return;
+  const blocks=selectedDirectionBlocks(),modes=new Set(blocks.map(block=>block.dataset.jotDirection||'auto'));
+  document.querySelectorAll('[data-paragraph-direction]').forEach(button=>{button.disabled=!blocks.length;button.setAttribute('aria-pressed',String(modes.size===1&&modes.has(button.dataset.paragraphDirection)));});
+}
+function setParagraphDirection(direction){
+  if(!['auto','ltr','rtl'].includes(direction)||composing)return;
+  flushTypingHistory();restoreSelection();const blocks=selectedDirectionBlocks();if(!blocks.length)return;
+  for(const block of blocks){if(direction==='auto')delete block.dataset.jotDirection;else block.dataset.jotDirection=direction;}
+  normalizeDirection();rememberSelection();onEdit('command');refreshDirectionControls();closePanels();
+}
+document.querySelectorAll('[data-paragraph-direction]').forEach(button=>{
+  button.addEventListener('pointerdown',event=>event.preventDefault());button.onclick=()=>setParagraphDirection(button.dataset.paragraphDirection);
+});
 function syncColorChoices() {
   const selected=JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color);
   const normal=JotDesign.hexColor(getComputedStyle(editor).color);
@@ -395,23 +487,30 @@ async function importHtml(html, files) {
       image.replaceWith(placeholder);missing++;
     }
   }
-  return {html:sanitizeHtml(doc.body.innerHTML),missing};
+  return {html:unformattedClipboardHtml(doc.body),missing};
 }
 async function paste(event) {
   event.preventDefault();
   rememberSelection();
   const targetId=model.activeId;
   const data=event.clipboardData;
+  if(!data)return;
   const images=[...data.items].filter(item=>item.kind==='file'&&item.type.startsWith('image/')).map(item=>item.getAsFile()).filter(Boolean);
   const html=data.getData('text/html');
-  // HTML carries ordering and structure. A bitmap representation must not replace it.
-  if(html){
+  const plain=data.getData('text/plain');
+  const containsImages=html&&/<img\b/i.test(html)&&new DOMParser().parseFromString(html,'text/html').body.querySelector('img');
+  // Mixed text/images keep their ordering, but not source text styling. A bitmap
+  // offered as an alternate representation must not replace clipboard text.
+  if(containsImages){
     const imported=await importHtml(html,images);
     if(model.activeId!==targetId)throw new Error('یادداشت تغییر کرد؛ دوباره بچسبانید.');
-    command('insertHTML',imported.html);
+    if(imported.html)command('insertHTML',imported.html);
     if(imported.missing){$('error').textContent=JotI18n.text('بخشی از تصاویر قابل دریافت نبود؛ جای آن‌ها مشخص شده است.');$('error').hidden=false;}
+  }else if(plain)command('insertHTML',plainToHtml(plain));
+  else if(html){
+    const content=unformattedClipboardHtml(new DOMParser().parseFromString(html,'text/html').body);
+    if(content)command('insertHTML',content);else if(images.length)await insertImages(images);
   }else if(images.length)await insertImages(images);
-  else command('insertHTML',plainToHtml(data.getData('text/plain')));
 }
 function copyPayload(all=false) {
   const container=document.createElement('div');
@@ -452,7 +551,10 @@ function loadIcons() {
   }
 }
 editor.addEventListener('input', () => onEdit());
-editor.addEventListener('compositionstart', () => { composing = true; });
+editor.addEventListener('compositionstart', () => {
+  flushTypingHistory();const history=histories.get(model.activeId);if(history)history.kind='composition-boundary';
+  composing = true;
+});
 editor.addEventListener('compositionend', () => { composing = false; onEdit(); });
 editor.addEventListener('beforeinput', (event) => {
   if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); undo(event.inputType === 'historyRedo'); }
@@ -530,6 +632,7 @@ $('menuButton').addEventListener('click', () => {
   const open = $('menu').hidden; closePanels(); if(open)setNoteMenuVisible(true);
   $('menuButton').setAttribute('aria-expanded', String(open)); app.classList.remove('typing');
   if(open){
+    refreshDirectionControls();
     $('menuActions').scrollTop=0;
     positionNoteMenu();
     const selected=$('noteColors').querySelector('[aria-pressed=true]');

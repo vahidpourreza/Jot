@@ -85,6 +85,7 @@ public partial class MainWindow : Window
         session.Windows.Add(this);
         Activated += OnWindowActivated;
         Deactivated += OnWindowDeactivated;
+        IsVisibleChanged += OnWindowVisibilityChanged;
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged += OnInputLanguageChanged;
         if(!testing&&Mode=="home")Microsoft.Win32.SystemEvents.UserPreferenceChanged+=OnSystemPreferenceChanged;
     }
@@ -95,6 +96,10 @@ public partial class MainWindow : Window
         Show();
         if (!testing) { WindowState = WindowState.Normal; if (ContentReady) Activate(); }
         Post(new { @event = "focus" });
+    }
+    private void OnWindowVisibilityChanged(object sender,DependencyPropertyChangedEventArgs e)
+    {
+        if(Mode=="home")Post(new{@event="window-visibility",visible=IsVisible});
     }
     internal void StartInTray()
     {
@@ -257,7 +262,7 @@ public partial class MainWindow : Window
             object? result = null;
             switch (action)
             {
-                case "context": result = new { mode = Mode, noteId = NoteId, image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive }; break;
+                case "context": result = new { mode = Mode, noteId = NoteId, image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive, visible = IsVisible }; break;
                 case "input-language": result = InputDirection(); break;
                 case "log-error": session.Log.Renderer(payload); result = true; break;
                 case "load": result = await store.Load(); break;
@@ -348,7 +353,7 @@ public partial class MainWindow : Window
                         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "HTML note (*.html)|*.html", FileName = "Jot-note.html" };
                         if (dialog.ShowDialog(this) == true)
                         {
-                            var html = "<!doctype html><html><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\"><title>Jot</title><style>body{max-width:760px;margin:40px auto;padding:20px;font:16px/1.9 system-ui}img{max-width:100%}p,li,blockquote{unicode-bidi:plaintext}pre{white-space:pre-wrap}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #aaa}</style><body>" + payload.GetProperty("html").GetString() + "</body></html>";
+                            var html = ExportDocument(payload.GetProperty("html").GetString()!);
                             await File.WriteAllTextAsync(dialog.FileName, html);
                         }
                     }
@@ -367,6 +372,8 @@ public partial class MainWindow : Window
                 Post(new { id, ok = false, error = message, operation = action, code = busy ? "clipboard-busy" : "operation-failed", logged = true });
         }
     }
+
+    internal static string ExportDocument(string fragment) => "<!doctype html><html><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\"><title>Jot</title><style>body{max-width:760px;margin:40px auto;padding:20px;font:16px/1.9 system-ui}img{max-width:100%}p,li,blockquote,td,th{unicode-bidi:isolate}pre{white-space:pre-wrap}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #aaa}</style><body>" + fragment + "</body></html>";
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
@@ -413,6 +420,7 @@ public partial class MainWindow : Window
         windowLifetime.Cancel();
         session.Windows.Remove(this);
         Activated -= OnWindowActivated; Deactivated -= OnWindowDeactivated;
+        IsVisibleChanged -= OnWindowVisibilityChanged;
         Loaded -= OnLoaded; SizeChanged -= OnSizeChanged;
         if (source is not null) { UnregisterHotKey(source.Handle, HotkeyId); source.RemoveHook(WndProc); }
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged -= OnInputLanguageChanged;

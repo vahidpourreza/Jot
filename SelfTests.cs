@@ -23,6 +23,7 @@ public partial class MainWindow
     private async Task Capture(string name)
     {
         await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
+        await WaitFor("document.getAnimations().every(animation=>animation.playState!=='running'||!Number.isFinite(animation.effect.getTiming().iterations))");
         await Task.Delay(180); // Include settled native-header CSS transitions.
         await using var stream=File.Create(Path.Combine(testOutput,name+".png"));
         await Browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,stream);
@@ -38,6 +39,7 @@ public partial class MainWindow
     private async Task ClickControl(string selector)
     {
         await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
+        await WaitFor("document.getAnimations().every(animation=>animation.playState!=='running'||!Number.isFinite(animation.effect.getTiming().iterations))");
         using var point=JsonDocument.Parse(await Script("(()=>{const r=document.querySelector("+JsonSerializer.Serialize(selector)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
         var x=point.RootElement.GetProperty("x").GetDouble();var y=point.RootElement.GetProperty("y").GetDouble();
         var closed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,6 +122,8 @@ public partial class MainWindow
         {
             await WaitFor("window.jotReady===true");
             checks.Add(new{name="home-ready",passed=true,elapsedMs=startup.ElapsedMilliseconds});
+            await MeasureIndexSmoothness(checks);
+            await VerifyIndexReconciliation(checks);
             checks.Add(new{name="normal-launch-opens-index-explicit-tray-flag-stays-quiet",passed=!App.ShouldStartInTray([])&&App.ShouldStartInTray(["--tray"])&&!App.ShouldStartInTray(["--tray","--self-test"])});
             CaptureCornerMask(checks);
             var dormant=new MainWindow(session,"home");
@@ -139,6 +143,7 @@ public partial class MainWindow
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
             await VerifyPerformance(checks,a);
+            await MeasureWindowAndImageWork(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});
             await a.Script("setInputDirection('rtl')");
             await a.Capture("empty-persian");
@@ -201,6 +206,7 @@ public partial class MainWindow
             using(var results=JsonDocument.Parse(await a.Script("window.testResults")))
                 foreach(var result in results.RootElement.EnumerateArray())checks.Add(result.Clone());
             await VerifyFontLimitCursor(checks,a);
+            await VerifyBidiWriting(checks,a);
             await VerifyNoteMotion(checks,a);
             await VerifyInactivePinnedChrome(checks,a);
             foreach(var action in new[]{("#copyButton","clipboard-write"),("#exportButton","export")})
@@ -368,6 +374,7 @@ public partial class MainWindow
             var quitData=(await store.Load())!.Value.GetProperty("notes").EnumerateArray().ToArray();
             checks.Add(new{name="quit-flushes-every-open-note",passed=TestHostActions.Contains("quit")&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel A"))&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel B"))});
             checks.Add(new{name="quit-shows-pending-spinner-and-label",passed=await Script("document.getElementById('homeQuit').disabled&&document.getElementById('homeQuit').getAttribute('aria-busy')==='true'&&getComputedStyle(document.querySelector('#homeQuit .quit-spinner')).display!=='none'")=="true"});
+            await MeasureDirectRendering(checks);
             checks.Add(new{name="no-renderer-exceptions",passed=session.Windows.All(w=>w.RuntimeErrors.Count==0)});
             var report=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});
             await File.WriteAllTextAsync(Path.Combine(testOutput,"results.json"),report);

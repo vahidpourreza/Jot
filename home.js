@@ -1,6 +1,8 @@
 'use strict';
 const $=id=>document.getElementById(id),request=JotBridge.request,t=value=>JotI18n.text(value);
 let homeData={version:2,notes:[],prefs:{...JotDesign.defaults}},refreshVersion=0,currentGroup=null,selectedId=null,editingId=null;
+const cardViews=new Map(),dateFormatter=new Intl.DateTimeFormat(JotI18n.locale,{month:'short',day:'numeric'}),countFormatter=new Intl.NumberFormat(JotI18n.locale);
+let groupSignature='',indexVisible=true,indexDirty=false,refreshScheduled=false,searchFrame=0;
 const indexViewKey='jot-index-view';
 try {
   const previous=JSON.parse(sessionStorage.getItem(indexViewKey)||'null');
@@ -11,42 +13,84 @@ function saveIndexView(){
 }
 function error(e){JotBridge.reportError(e,'home');$('homeError').textContent=t(e.message);$('homeError').hidden=false;}
 function noteName(note){return note.title||note.plain.split(/\n/).find(line=>line.trim())?.trim().slice(0,90)||note.legacyTitle||t(note.hasImage?'یادداشت تصویری':'یادداشت تازه');}
+function displayMixedText(element,text){element.textContent=text;JotBidi.normalize(element,new Set([element]),'ltr');}
 function groupNames(){return [...new Set(homeData.notes.map(note=>note.group||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,JotI18n.locale));}
 function renderGroups(){
-  $('groupFilters').replaceChildren();
-  for(const group of [null,'',...groupNames()]){
-    const button=document.createElement('button');button.className='group-chip';button.dataset.group=group??'*';
-    button.textContent=group===null?t('همه یادداشت‌ها'):group===''?t('بدون گروه'):group;
-    button.setAttribute('aria-pressed',String(currentGroup===group));
-    button.onclick=()=>{currentGroup=group;saveIndexView();renderCards();renderGroups();};$('groupFilters').append(button);
+  const groups=[null,'',...groupNames()],signature=JSON.stringify(groups);
+  if(signature!==groupSignature){
+    groupSignature=signature;$('groupFilters').replaceChildren();
+    for(const group of groups){
+      const button=document.createElement('button');button.className='group-chip';button.dataset.group=group??'*';
+      button.jotGroup=group;
+      displayMixedText(button,group===null?t('همه یادداشت‌ها'):group===''?t('بدون گروه'):group);
+      button.onclick=()=>{currentGroup=group;saveIndexView();renderCards();renderGroups();};$('groupFilters').append(button);
+    }
   }
+  for(const button of $('groupFilters').children){const pressed=String(button.jotGroup===currentGroup);if(button.getAttribute('aria-pressed')!==pressed)button.setAttribute('aria-pressed',pressed);}
+}
+function createCard(note){
+  const card=document.createElement('article');card.className='note-card sticky-card';card.dataset.noteId=note.id;
+  const open=document.createElement('button');open.className='card-open';
+  const title=document.createElement('strong');title.dir='auto';
+  const snippet=document.createElement('p');snippet.dir='auto';
+  const text=document.createElement('span');text.className='card-text';text.append(title,snippet);
+  const group=document.createElement('span');group.className='card-group';group.dir='auto';displayMixedText(group,note.group||t('بدون گروه'));
+  open.append(JotDesign.icon(note.hasImage?'image':'notepad-text'),text,group);
+  const foot=document.createElement('div');foot.className='card-footer';
+  const time=document.createElement('small');
+  const edit=document.createElement('button');edit.className='card-edit';edit.title=t('عنوان و گروه');edit.setAttribute('aria-label',t('عنوان و گروه'));edit.append(JotDesign.icon('settings-2'),document.createTextNode(t('عنوان و گروه')));
+  foot.append(time,edit);card.append(open,foot);
+  const view={card,open,title,snippet,group,time,note,previous:{},hasImage:!!note.hasImage};
+  open.onclick=()=>{selectedId=view.note.id;saveIndexView();updateSelectedCards();request('open-note',view.note.id).catch(error);};
+  edit.onclick=()=>editNote(view.note);return view;
+}
+function updateSelectedCards(){
+  const id=selectedId||homeData.activeId;
+  for(const [noteId,view] of cardViews){const selected=String(noteId===id);if(view.card.dataset.selected!==selected)view.card.dataset.selected=selected;}
 }
 function renderCards(){
   const query=$('homeSearch').value.trim().toLocaleLowerCase();
   const notes=homeData.notes.filter(note=>(currentGroup===null||(note.group||'')===currentGroup)&&[note.title,note.plain,note.legacyTitle,note.group].join(' ').toLocaleLowerCase().includes(query)).sort((a,b)=>b.updatedAt-a.updatedAt);
-  $('cards').replaceChildren();$('homeEmpty').hidden=homeData.notes.length>0;
-  const count=new Intl.NumberFormat(JotI18n.locale).format(homeData.notes.length);
-  $('noteCount').textContent=count+(JotI18n.language==='en'?' notes':' یادداشت');
+  const container=$('cards'),focus=document.activeElement;
+  const allIds=new Set(homeData.notes.map(note=>note.id)),visibleIds=new Set(notes.map(note=>note.id));
+  for(const [id,view] of cardViews)if(!allIds.has(id)){view.card.remove();cardViews.delete(id);}
+  for(const card of [...container.children])if(!visibleIds.has(card.dataset.noteId))card.remove();
+  $('homeEmpty').hidden=homeData.notes.length>0;
+  const count=countFormatter.format(homeData.notes.length)+' notes';
+  if($('noteCount').textContent!==count)$('noteCount').textContent=count;
+  let cursor=container.firstElementChild;
   for(const note of notes){
-    const card=document.createElement('article');card.className='note-card sticky-card';card.dataset.noteId=note.id;card.dataset.selected=String(note.id===(selectedId||homeData.activeId));
-    const open=document.createElement('button');open.className='card-open';open.setAttribute('aria-label',t('باز کردن')+' '+noteName(note));
-    const title=document.createElement('strong');title.dir='auto';title.textContent=noteName(note);
-    const snippet=document.createElement('p');snippet.dir='auto';snippet.textContent=note.plain.split('\n').filter(s=>s.trim()).slice(note.title?0:1).join(' ').slice(0,180)||t('برای نوشتن باز کن…');
-    const text=document.createElement('span');text.className='card-text';text.append(title,snippet);
-    const group=document.createElement('span');group.className='card-group';group.dir='auto';group.textContent=note.group||t('بدون گروه');
-    open.append(JotDesign.icon(note.hasImage?'image':'notepad-text'),text,group);
-    open.onclick=()=>{selectedId=note.id;saveIndexView();renderCards();request('open-note',note.id).catch(error);};
-    const foot=document.createElement('div');foot.className='card-footer';
-    const time=document.createElement('small');time.textContent=new Intl.DateTimeFormat(JotI18n.locale,{month:'short',day:'numeric'}).format(note.updatedAt);
-    const edit=document.createElement('button');edit.className='card-edit';edit.title=t('عنوان و گروه');edit.setAttribute('aria-label',t('عنوان و گروه'));edit.append(JotDesign.icon('settings-2'),document.createTextNode(t('عنوان و گروه')));edit.onclick=()=>editNote(note);
-    foot.append(time,edit);card.append(open,foot);$('cards').append(card);
+    let view=cardViews.get(note.id);if(!view){view=createCard(note);cardViews.set(note.id,view);}
+    const previous=view.previous;view.note=note;
+    if(previous.plain!==note.plain||previous.title!==note.title||previous.legacyTitle!==note.legacyTitle||view.hasImage!==!!note.hasImage){
+      const name=noteName(note);if(view.title.textContent!==name)displayMixedText(view.title,name);
+      view.open.setAttribute('aria-label',t('باز کردن')+' '+name);
+      const snippet=note.plain.split('\n').filter(s=>s.trim()).slice(note.title?0:1).join(' ').slice(0,180)||t('برای نوشتن باز کن…');
+      if(view.snippet.textContent!==snippet)displayMixedText(view.snippet,snippet);
+    }
+    if(previous.group!==note.group)displayMixedText(view.group,note.group||t('بدون گروه'));
+    if(previous.updatedAt!==note.updatedAt)view.time.textContent=dateFormatter.format(note.updatedAt);
+    if(view.hasImage!==!!note.hasImage){view.open.firstElementChild.replaceWith(JotDesign.icon(note.hasImage?'image':'notepad-text'));view.hasImage=!!note.hasImage;}
+    view.previous={plain:note.plain,title:note.title,legacyTitle:note.legacyTitle,group:note.group,updatedAt:note.updatedAt};
+    if(view.card!==cursor)container.insertBefore(view.card,cursor);else cursor=cursor.nextElementSibling;
   }
-  if(!notes.length&&homeData.notes.length){const empty=document.createElement('p');empty.className='empty-list';empty.textContent=t('یادداشتی پیدا نشد.');$('cards').append(empty);}
+  updateSelectedCards();
+  if(!notes.length&&homeData.notes.length){const empty=document.createElement('p');empty.className='empty-list';empty.textContent=t('یادداشتی پیدا نشد.');container.append(empty);}
+  if(focus!==document.activeElement&&focus?.isConnected&&container.contains(focus))focus.focus({preventScroll:true});
 }
-async function refresh(){
-  const version=++refreshVersion,data=await request('index-load');if(version!==refreshVersion)return;
+async function refresh(initialData){
+  indexDirty=false;
+  const version=++refreshVersion,data=initialData??await request('index-load');if(version!==refreshVersion)return;
   if(data)homeData=data;homeData.prefs=JotDesign.apply(homeData.prefs);renderGroups();renderCards();
   $('homeStatus').textContent=t('ذخیره محلی · روی همین دستگاه');
+}
+function scheduleRefresh(){
+  indexDirty=true;
+  if(!indexVisible||refreshScheduled)return;
+  refreshScheduled=true;
+  setTimeout(async()=>{
+    try{while(indexDirty&&indexVisible)await refresh();}catch(e){error(e);}finally{refreshScheduled=false;}
+  },40);
 }
 function editNote(note){
   editingId=note.id;$('noteTitleInput').value=note.title||'';$('noteGroupInput').value=note.group||'';
@@ -77,11 +121,12 @@ $('homeQuit').onclick=async()=>{
   catch(e){$('homeQuit').disabled=false;$('homeQuit').setAttribute('aria-busy','false');error(e);}
 };
 $('settingsButton').onclick=()=>{saveIndexView();request('settings').catch(error);};
-$('homeSearch').oninput=()=>{saveIndexView();renderCards();};
+$('homeSearch').oninput=()=>{saveIndexView();cancelAnimationFrame(searchFrame);searchFrame=requestAnimationFrame(renderCards);};
 window.addEventListener('pagehide',saveIndexView);
 JotBridge.on(data=>{
-  if(data.event==='notes-changed')refresh().catch(error);
-  if(data.event==='preferences'){homeData.prefs=JotDesign.apply(data.prefs);renderGroups();renderCards();$('homeStatus').textContent=t('ذخیره محلی · روی همین دستگاه');}
+  if(data.event==='notes-changed')scheduleRefresh();
+  if(data.event==='window-visibility'){indexVisible=data.visible;if(indexVisible&&indexDirty)scheduleRefresh();}
+  if(data.event==='preferences'){homeData.prefs=JotDesign.apply(data.prefs);$('homeStatus').textContent=t('ذخیره محلی · روی همین دستگاه');}
   if(data.event==='warning')error(new Error(data.message));
   if(data.event==='quit-failed'){$('homeQuit').disabled=false;$('homeQuit').setAttribute('aria-busy','false');error(new Error(data.message));}
 });
@@ -92,13 +137,14 @@ document.addEventListener('keydown',event=>{
 });
 async function boot(){
   JotDesign.icons();JotDesign.drag($('homeHandle'));
-  if(!await request('index-load')){
+  const [initial,context]=await Promise.all([request('index-load'),request('context')]);indexVisible=context.visible;
+  if(!initial){
     const legacy=JSON.parse(localStorage.getItem('vanz-notes')||'[]');
     if(!Array.isArray(legacy))throw new Error('یادداشت‌های قبلی قابل خواندن نیستند.');
     const escape=s=>{const element=document.createElement('span');element.textContent=s;return element.innerHTML;};
     homeData.notes=legacy.map(note=>({id:crypto.randomUUID(),html:String(note.content||'').split(/\r?\n/).map(line=>'<p dir="auto">'+(escape(line)||'<br>')+'</p>').join(''),plain:String(note.content||''),legacyTitle:String(note.title||''),updatedAt:Number(note.updatedAt)||Date.now()}));
     await request('import',homeData);
   }
-  await refresh();window.jotReady=true;
+  await refresh(initial);window.jotReady=true;
 }
 boot().catch(error);

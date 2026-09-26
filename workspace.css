@@ -57,6 +57,14 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .app .window-actions,.app .footer-actions{opacity:.7}.app .app-button{padding:4px}.app-button .jot-logo{width:22px;height:22px;border-radius:6px}.app-button .jot-logo svg{width:15px;height:15px}
 .editor img{max-width:72px!important;max-height:48px!important;width:auto!important;height:auto!important;object-fit:contain;cursor:zoom-in;border:1px solid var(--border);margin:2px 4px;border-radius:5px;vertical-align:middle;box-shadow:0 1px 3px #0001}
 .editor [data-empty-block=true]{unicode-bidi:isolate}
+.editor bdi[data-jot-bidi=token],.editor code{unicode-bidi:isolate;direction:ltr}
+.editor :is(p,div,h1,h2,h3,h4,h5,h6,li,blockquote,td,th){unicode-bidi:isolate}
+.editor ul,.editor ol{padding-inline:1.6em}
+.editor [data-jot-direction]{unicode-bidi:isolate;text-align:start}
+.card-text strong,.card-text p,.card-group{unicode-bidi:isolate}
+.direction-row{justify-content:space-between}.direction-choices{display:flex;gap:3px;direction:ltr}
+.direction-choices button{border:1px solid transparent;border-radius:4px;background:transparent;color:var(--muted-foreground);padding:4px 7px;font-size:12px}
+.direction-choices button:hover,.direction-choices button[aria-pressed=true]{background:var(--muted);color:var(--foreground);border-color:var(--border)}
 .editor{line-height:var(--editor-line-height,1.95)}
 .editor table{border-collapse:collapse;max-width:100%;font-size:.9em;margin-block:10px}.editor th,.editor td{border:1px solid var(--border);padding:6px 9px;min-width:45px;vertical-align:top}.editor th{background:var(--muted);font-weight:700}.editor mark{background:#fbbf2455;color:inherit}.editor figure{margin:8px 0}
 .editor h1{font-size:1.55em}.editor h3{font-size:1.2em}.editor h4,.editor h5,.editor h6{font-size:1em}.editor :is(h1,h3,h4,h5,h6){font-weight:700;line-height:1.7;unicode-bidi:plaintext;text-align:start}

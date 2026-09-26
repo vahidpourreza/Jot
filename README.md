@@ -4,7 +4,7 @@ A personal Windows notes app built with .NET 10. The UI uses the existing design
 
 ## Current build
 
-Run **dist\Jot-controls\Jot.exe** (v1.2.0), keeping its adjacent files together. Normal launches open the notes index with a taskbar entry, while the system tray stays available. Launching Jot again reveals the existing index. Use Ctrl+Alt+J for a note. Hiding a window removes its taskbar entry without quitting. Explicit `--tray` startup remains available if you deliberately want a background-only launch. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
+Run **dist\Jot-bidi\Jot.exe** (v1.3.0), keeping its adjacent files together. Normal launches open the notes index with a taskbar entry, while the system tray stays available. Launching Jot again reveals the existing index. Use Ctrl+Alt+J for a note. Hiding a window removes its taskbar entry without quitting. Explicit `--tray` startup remains available if you deliberately want a background-only launch. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
 
 The .NET runtime is bundled. Windows 10 version 2004 or later and Microsoft Edge WebView2 Runtime are required. This build uses WebView2's WPF composition control with anti-aliased clipping, a subtle border, and a soft shadow. It no longer uses a jagged Win32 region for its corners.
 
@@ -16,6 +16,8 @@ Settings replaces the index in the same window. **Back to notes** (or Escape) re
 
 The app interface is English-only; notes still fully support Persian and English together, with automatic paragraph direction and a keyboard-aware empty caret. Notes have no placeholder, sidebar, title field, or saved/saving badge. Autosave continues quietly; a real failure remains visible.
 
+Mixed-language handling now recognizes Persian sentences that start with English technical identifiers, and isolates English/technical expressions so their internal order remains readable. Read-only titles/previews use the same rules. **More → Direction → Auto / LTR / RTL** provides a per-paragraph override for ambiguous cases, with Undo and save/reload support. This does not change the app language, reorder stored characters, or add hidden direction characters to plain-text Copy. See [mixed-language writing](docs/mixed-language-writing.md) for coverage and limits.
+
 The note header has **+ New note** on the left and **More → Pin → X (close note)** on the right. The app-logo/Home button, old grip, and shutdown controls are removed from notes. Open the index through **More → All notes** or Ctrl+K. X saves and hides only its note. More borrows the Windows Sticky Notes visual style—an edge-to-edge color palette and flat icon/text rows—with **All notes**, small **Light mode / Dark mode** text, **Font size**, **Export**, **Copy**, and **Delete**. The Appearance and plain-text-copy shortcuts are removed from notes; app settings remain in the index. All 19 colors are visible in one row, ordered from warm reds through yellows/greens/blues to purples/pinks, with neutral last. Swatches narrow with the window; none are hidden behind scrolling. Left/right arrows navigate them; Home/End reach the first/last color. In short windows only the options list scrolls, keeping every color visible and leaving room outside the panel to dismiss it. Escape also dismisses it. Pin remains opt-in and uses a filled glyph when active, without a solid background. The bottom formatting/image controls stay neutral-colored.
 
 If no title is set in the index, the first line supplies it. The writing surface stays neutral: the active note uses a colored sticky-note header, while an inactive note shows a more visible 8px colored top strip. The colored header expands/collapses over 160ms without shifting the writing area. More visibly reveals its full height over 260ms and closes over 200ms, with an opaque surface so text does not bleed through. Interrupted motion continues from the current frame. Closing controls become non-interactive immediately; reduced-motion preferences disable these effects. Pin hides with the other inactive header icons, even when pinned; the whole group returns on hover/focus. Header hover targets sit below the 8px strip in both themes. Font size is displayed in pixels and stays within 13–24px. At either limit, the disabled button uses a normal cursor and a minimum/maximum tooltip, not a loading cursor. Only explicitly busy actions use the wait cursor. Native window corners are reduced to 6px, with matching 5px content clipping and compact 6px popovers.
@@ -23,14 +25,14 @@ If no title is set in the index, the first line supplies it. The writing surface
 ## Writing and images
 
 - Bold, italic, underline, strikethrough, bullet/numbered lists, and text color are directly available in one bottom row. Clear formatting and the More tools submenu are removed. Text color uses a filled circle showing the selected color; its compact swatch picker opens upward. The separate upright T toggle or Ctrl+Shift+F still shows/hides the row with a 220/180ms slide/fade, without moving the editor. Image insertion remains beside the toggle. Every footer glyph uses the same centered 16×16 SVG layout. The preference is remembered.
-- The Text paragraph-style dropdown is removed. Existing/pasted headings, quotes, and code are retained; Strikethrough and per-note undo/redo remain available. Bold/italic/underline/strikethrough can each be toggled off directly.
+- The Text paragraph-style dropdown is removed. Existing saved headings, quotes, and code are retained; new pasted text is unformatted. Strikethrough and per-note undo/redo remain available. Bold/italic/underline/strikethrough can each be toggled off directly.
 - **Line height** in More and Settings adjusts spacing in all open notes, using 1.2×, 1.5×, 1.75×, 1.95×, 2.2×, and 2.5× presets. Existing spacing stays at 1.95× until changed. It is a persistent writing preference, not a rewrite of note HTML or Persian/English paragraph direction.
-- Paste formatted content including headings, tables, lists, links, images, and mixed Persian/English text. Active scripts and unsafe elements are stripped.
+- **Normal paste is plain text by default.** Ctrl+V prefers the clipboard's text/plain version and does not import source colors, fonts, highlighting, code-block backgrounds, headings, or table styling. Line breaks, blank lines, indentation, literal code characters, and Persian/English text are preserved. HTML-only clipboard text is flattened into ordinary paragraphs (table cells use tab separators); active content is discarded. An empty clipboard does not change the note. Existing notes are not restyled or rewritten.
 - Images appear as tiny inline previews (up to 72 × 48), without forcing a separate paragraph. Click one to open the original in a separate image viewer, with Fit, 1:1, and Copy.
 - Original image resolution is retained. PNG, JPEG, WebP, and GIF are supported, up to 8 MB each.
 - Ctrl+C retains selected rich HTML, embedded images, and plain-text fallback. “Copy” copies the whole document. A selection containing one image supplies native PNG and Bitmap formats alongside its text, using the original resolution. There is no separate plain-text-copy action; normal Copy still supplies a plain-text fallback alongside rich content.
 - The receiving application chooses which clipboard formats it supports; plain-text-only apps cannot retain images or formatting.
-- HTML clipboard content is preferred over its bitmap representation, preserving text/image order.
+- For mixed text/images, HTML is used only to retain image placement: the surrounding text is unformatted and original images remain inline thumbnails. Image-only clipboard content still pastes as an image. This does not change outgoing Copy, which retains the note's current rich content and original images.
 - Pasted public HTTPS image references are downloaded without cookies and embedded locally. Unavailable images get a visible placeholder and notification instead of silently disappearing. Sources requiring login may not be retrievable.
 - Copy the complete note, change text size or line height, or export a standalone HTML note from the **note header → More** menu. The theme action states which mode it will switch to. Appearance settings are available from the index or tray Settings action. Strikethrough remains directly on the bottom toolbar.
 
@@ -50,7 +52,9 @@ Jot uses the selected **B — folded stack** mark: yellow, teal, and blue papers
 
 ## Responsiveness and initial paint
 
-Typing updates direction only in changed blocks, reads the undo snapshot once, and defers layout-dependent plain-text capture until saving. Selection-toolbar updates are coalesced into one animation frame. Unchanged notes do not rewrite storage. Autosaving content no longer reapplies preferences or recolors all open editors.
+Typing updates direction only in changed blocks, coalesces undo snapshots after a short typing pause, and defers layout-dependent plain-text capture until saving. Undo, formatting, and Save capture pending typing immediately, so those commands never use a stale snapshot. Selection-toolbar updates are coalesced into one animation frame. Unchanged notes do not rewrite storage. Autosaving content no longer reapplies preferences or recolors all open editors. The index updates existing rows rather than rebuilding every control, batches search/refresh work, and defers autosave refreshes while hidden.
+
+The app remains C#/.NET 10. See [the measured responsiveness assessment](docs/responsiveness-assessment.md) for the shipped improvements and a direct-rendering experiment. Window movement/resize parity with Telegram has **not** been established; the production capture-based renderer is unchanged, and the experimental host is test-only.
 
 Storage reads and mutations share a serialized background-worker boundary, so parsing and durable disk flushes do not block the window dispatcher. A file-stamp-aware cache keeps committed data only; failed writes preserve the old snapshot, and external file changes invalidate it. The index receives text/metadata summaries rather than every original embedded image, and each editor loads only its own note. Atomic replacement, backups, original image data, and delete recovery remain unchanged.
 
@@ -102,9 +106,9 @@ Core editing and all UI assets work locally. Network access is only used to retr
 
 ## Build and test
 
-    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-controls
+    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-bidi
     node --check .\renderer.js
-    Start-Process .\dist\Jot-controls\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
+    Start-Process .\dist\Jot-bidi\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
 
 The self-test mode uses isolated data and offscreen non-activating windows, registers no global hotkey, and creates no tray icon. It never writes the user's clipboard. Clipboard formats are tested as in-memory DataObjects and renderer DataTransfer objects. Reports and UI renders stay inside the specified test directory. Use a fresh output directory for each run: failure-injection fixtures deliberately leave broken paths and files behind.
 
