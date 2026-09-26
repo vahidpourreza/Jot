@@ -4,7 +4,7 @@ A personal Windows notes app built with .NET 10. The UI uses the existing design
 
 ## Current build
 
-Run **dist\Jot-bidi\Jot.exe** (v1.3.0), keeping its adjacent files together. Normal launches open the notes index with a taskbar entry, while the system tray stays available. Launching Jot again reveals the existing index. Use Ctrl+Alt+J for a note. Hiding a window removes its taskbar entry without quitting. Explicit `--tray` startup remains available if you deliberately want a background-only launch. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
+Run **dist\Jot-context\Jot.exe** (v1.4.0), keeping its adjacent files together. Normal launches open the notes index with a taskbar entry, while the system tray stays available. Launching Jot again reveals the existing index. Use Ctrl+Alt+J for a note. Hiding a window removes its taskbar entry without quitting. Explicit `--tray` startup remains available if you deliberately want a background-only launch. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
 
 The .NET runtime is bundled. Windows 10 version 2004 or later and Microsoft Edge WebView2 Runtime are required. This build uses WebView2's WPF composition control with anti-aliased clipping, a subtle border, and a soft shadow. It no longer uses a jagged Win32 region for its corners.
 
@@ -24,11 +24,14 @@ If no title is set in the index, the first line supplies it. The writing surface
 
 ## Writing and images
 
+- Right-click inside a note for a Jot-styled editing menu: Undo/Redo, Cut, Copy, plain-text Paste, and Select all. Right-click an image for Open image, Copy image, and undoable Remove image. Shift+F10 opens it from the keyboard; arrows/Home/End navigate, and Escape dismisses it. Clipboard reads happen only on Paste. Cut removes content only after successful copying; a failed, cancelled, or stale operation leaves it intact.
+- The More panel now uses a distinct neutral surface in both themes, keeping its existing options, colors and transitions.
 - Bold, italic, underline, strikethrough, bullet/numbered lists, and text color are directly available in one bottom row. Clear formatting and the More tools submenu are removed. Text color uses a filled circle showing the selected color; its compact swatch picker opens upward. The separate upright T toggle or Ctrl+Shift+F still shows/hides the row with a 220/180ms slide/fade, without moving the editor. Image insertion remains beside the toggle. Every footer glyph uses the same centered 16×16 SVG layout. The preference is remembered.
 - The Text paragraph-style dropdown is removed. Existing saved headings, quotes, and code are retained; new pasted text is unformatted. Strikethrough and per-note undo/redo remain available. Bold/italic/underline/strikethrough can each be toggled off directly.
 - **Line height** in More and Settings adjusts spacing in all open notes, using 1.2×, 1.5×, 1.75×, 1.95×, 2.2×, and 2.5× presets. Existing spacing stays at 1.95× until changed. It is a persistent writing preference, not a rewrite of note HTML or Persian/English paragraph direction.
 - **Normal paste is plain text by default.** Ctrl+V prefers the clipboard's text/plain version and does not import source colors, fonts, highlighting, code-block backgrounds, headings, or table styling. Line breaks, blank lines, indentation, literal code characters, and Persian/English text are preserved. HTML-only clipboard text is flattened into ordinary paragraphs (table cells use tab separators); active content is discarded. An empty clipboard does not change the note. Existing notes are not restyled or rewritten.
-- Images appear as tiny inline previews (up to 72 × 48), without forcing a separate paragraph. Click one to open the original in a separate image viewer, with Fit, 1:1, and Copy.
+- Images appear as tiny inline previews (up to 72 × 48), without forcing a separate paragraph. Click one to open the original in a separate viewer: zoom in/out with a percentage, Fit, 100%, original-image Copy, and fullscreen. Scroll to zoom, drag to pan, or double-click to toggle Fit/100%. Manual zoom runs from 10% to 800%; Fit can go smaller for large images.
+- F11 or the fullscreen button fills the image window's current monitor, without enabling always-on-top. Escape exits fullscreen and restores the previous bounds; another Escape closes the image viewer. +/− zoom, 0 fits, and 1 selects 100%. Viewer zoom never changes the stored or copied original.
 - Original image resolution is retained. PNG, JPEG, WebP, and GIF are supported, up to 8 MB each.
 - Ctrl+C retains selected rich HTML, embedded images, and plain-text fallback. “Copy” copies the whole document. A selection containing one image supplies native PNG and Bitmap formats alongside its text, using the original resolution. There is no separate plain-text-copy action; normal Copy still supplies a plain-text fallback alongside rich content.
 - The receiving application chooses which clipboard formats it supports; plain-text-only apps cannot retain images or formatting.
@@ -106,9 +109,9 @@ Core editing and all UI assets work locally. Network access is only used to retr
 
 ## Build and test
 
-    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-bidi
+    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-context
     node --check .\renderer.js
-    Start-Process .\dist\Jot-bidi\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
+    Start-Process .\dist\Jot-context\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
 
 The self-test mode uses isolated data and offscreen non-activating windows, registers no global hotkey, and creates no tray icon. It never writes the user's clipboard. Clipboard formats are tested as in-memory DataObjects and renderer DataTransfer objects. Reports and UI renders stay inside the specified test directory. Use a fresh output directory for each run: failure-injection fixtures deliberately leave broken paths and files behind.
 

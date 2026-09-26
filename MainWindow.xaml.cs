@@ -36,6 +36,10 @@ public partial class MainWindow : Window
     internal string NativeIconKey { get; private set; } = "";
     internal readonly List<string> TestHostActions = [];
     internal readonly List<string> RuntimeErrors = [];
+    internal ClipboardContent TestClipboardContent=new("","",null);
+    internal bool TestClipboardWriteAccepted=true;
+    internal int TestClipboardDelayMs;
+    internal System.Windows.DataObject? TestClipboardData;
     internal string Mode { get; }
     internal string? NoteId { get; }
     internal string? ImageSource { get; set; }
@@ -159,6 +163,7 @@ public partial class MainWindow : Window
     private void RoundWindow()
     {
         if (closingPermanently || Browser is null || ActualWidth < 20 || ActualHeight < 20) return;
+        if(IsImageFullscreen){Browser.Clip=null;return;}
         Browser.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth-18), Math.Max(0, ActualHeight-18)), 5, 5);
     }
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RoundWindow();
@@ -177,7 +182,7 @@ public partial class MainWindow : Window
             var core = Browser.CoreWebView2;
             webView = core;
             core.Settings.AreDevToolsEnabled = testing;
-            core.Settings.AreDefaultContextMenusEnabled = true;
+            core.Settings.AreDefaultContextMenusEnabled = Mode!="note";
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreBrowserAcceleratorKeysEnabled = false;
@@ -316,8 +321,9 @@ public partial class MainWindow : Window
                     if (!testing) Topmost = payload.GetBoolean();
                     result = payload.GetBoolean(); break;
                 case "drag":
-                    if (!testing) { ReleaseCapture(); SendMessage(source!.Handle, 0x00A1, 2, 0); }
+                    if (!testing&&!IsImageFullscreen) { ReleaseCapture(); SendMessage(source!.Handle, 0x00A1, 2, 0); }
                     break;
+                case "image-fullscreen": result=SetImageFullscreen(payload.GetBoolean());break;
                 case "hide":
                     if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
                     else if (!testing) Hide();
@@ -336,8 +342,11 @@ public partial class MainWindow : Window
                     session.Image(src); break;
                 case "clipboard-write":
                     var clipboard = RichClipboard.Create(payload);
-                    if (!testing) await RichClipboard.WriteAsync(clipboard, session.Log);
-                    result = true; break;
+                    if(testing){TestClipboardData=clipboard;if(TestClipboardDelayMs>0)await Task.Delay(TestClipboardDelayMs);}
+                    result = testing?TestClipboardWriteAccepted:await RichClipboard.WriteAsync(clipboard, session.Log);break;
+                case "clipboard-read":
+                    if(Mode!="note")throw new InvalidOperationException("Paste is available only in a note editor.");
+                    result=testing?TestClipboardContent:await ClipboardReader.ReadAsync(session.Log);break;
                 case "clipboard-text":
                     if (!testing)
                     {
@@ -379,7 +388,7 @@ public partial class MainWindow : Window
     {
         if (closingPermanently) return 0;
         if (msg == 0x0051) _ = Dispatcher.BeginInvoke(NotifyInputLanguage);
-        if (msg == 0x0084)
+        if (msg == 0x0084&&!IsImageFullscreen)
         {
             int packed = unchecked((int)lParam);
             var point = PointFromScreen(new Point((short)(packed & 0xffff), (short)(packed >> 16)));

@@ -284,6 +284,7 @@ function undo(redo = false) {
   normalizeDirection(); updateEmpty(); capture(); queueSave(); restoreSelection();
 }
 function closePanels() {
+  window.JotEditorMenu?.close();
   closeFormatMenus();
   setToolbarVisible(model.prefs.toolbarVisible !== false); setNoteMenuVisible(false);
   $('menuButton').setAttribute('aria-expanded', 'false');
@@ -457,18 +458,19 @@ function readImage(file) {
     reader.readAsDataURL(file);
   });
 }
-async function insertImages(files) {
+async function insertImages(files,isCurrent=()=>true) {
   if (!files.length || imageBusy) return;
   rememberSelection();
-  const targetId = model.activeId;
+  const targetId = model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange();
   imageBusy = true;
   $('imageButton').disabled = true;
   try {
     const results = [];
     for (const file of files) results.push(await readImage(file));
-    if (model.activeId !== targetId) throw new Error('یادداشت تغییر کرد. تصویر را دوباره بچسبانید.');
+    if (model.activeId !== targetId||revision!==targetRevision||composing||deleting||!isCurrent()) throw new Error('یادداشت تغییر کرد. تصویر را دوباره بچسبانید.');
     const size = results.reduce((sum, src) => sum + src.length, 0) + editor.innerHTML.length;
     if (size > 24 * 1024 * 1024) throw new Error('حجم این یادداشت زیاد است؛ تصویر را در یادداشت جدید قرار دهید.');
+    bookmark=targetSelection;
     command('insertHTML', results.map((src) => '<img alt="'+JotI18n.text('تصویر')+'" src="' + src + '">').join(' ') + ' ');
   } finally { imageBusy = false; $('imageButton').disabled = false; }
 }
@@ -489,10 +491,10 @@ async function importHtml(html, files) {
   }
   return {html:unformattedClipboardHtml(doc.body),missing};
 }
-async function paste(event) {
+async function paste(event,isCurrent=()=>true) {
   event.preventDefault();
   rememberSelection();
-  const targetId=model.activeId;
+  const targetId=model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange();
   const data=event.clipboardData;
   if(!data)return;
   const images=[...data.items].filter(item=>item.kind==='file'&&item.type.startsWith('image/')).map(item=>item.getAsFile()).filter(Boolean);
@@ -503,14 +505,15 @@ async function paste(event) {
   // offered as an alternate representation must not replace clipboard text.
   if(containsImages){
     const imported=await importHtml(html,images);
-    if(model.activeId!==targetId)throw new Error('یادداشت تغییر کرد؛ دوباره بچسبانید.');
+    if(model.activeId!==targetId||revision!==targetRevision||composing||deleting||!isCurrent())throw new Error('یادداشت تغییر کرد؛ دوباره بچسبانید.');
+    bookmark=targetSelection;
     if(imported.html)command('insertHTML',imported.html);
     if(imported.missing){$('error').textContent=JotI18n.text('بخشی از تصاویر قابل دریافت نبود؛ جای آن‌ها مشخص شده است.');$('error').hidden=false;}
   }else if(plain)command('insertHTML',plainToHtml(plain));
   else if(html){
     const content=unformattedClipboardHtml(new DOMParser().parseFromString(html,'text/html').body);
-    if(content)command('insertHTML',content);else if(images.length)await insertImages(images);
-  }else if(images.length)await insertImages(images);
+    if(content)command('insertHTML',content);else if(images.length)await insertImages(images,isCurrent);
+  }else if(images.length)await insertImages(images,isCurrent);
 }
 function copyPayload(all=false) {
   const container=document.createElement('div');

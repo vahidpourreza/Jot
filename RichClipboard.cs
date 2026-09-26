@@ -11,38 +11,41 @@ namespace Jot;
 internal static class RichClipboard
 {
     internal const int ClipboardBusyHResult = unchecked((int)0x800401D0);
-    private static readonly SemaphoreSlim writeGate = new(1, 1);
+    internal static readonly SemaphoreSlim AccessGate = new(1, 1);
     private static int latestWrite;
     private static readonly int[] retryDelays = [50, 90, 150, 250, 400, 550];
     internal static bool IsBusy(Exception error) => error is ExternalException && error.HResult == ClipboardBusyHResult;
 
     // The delay lets the WebView copy event release the clipboard before the native
     // PNG/HTML write. All attempts resume on the caller's WPF STA context.
-    internal static async Task WriteAsync(DataObject data, ErrorLog log)
+    internal static async Task<bool> WriteAsync(DataObject data, ErrorLog log)
     {
         int request = Interlocked.Increment(ref latestWrite);
-        await writeGate.WaitAsync();
+        await AccessGate.WaitAsync();
         try
         {
             await Task.Delay(60);
-            if (request != Volatile.Read(ref latestWrite)) return;
+            if (request != Volatile.Read(ref latestWrite)) return false;
+            bool written=false;
             await RetryAsync(() => {
                 if (data.GetDataPresent("PNG") && data.GetData("PNG") is Stream stream && stream.CanSeek) stream.Position = 0;
                 System.Windows.Clipboard.SetDataObject(data, true);
+                written=true;
             }, log, () => request != Volatile.Read(ref latestWrite));
+            return written;
         }
-        finally { writeGate.Release(); }
+        finally { AccessGate.Release(); }
     }
-    internal static async Task RetryAsync(Action write, ErrorLog log, Func<bool>? superseded = null, Func<int,Task>? delay = null)
+    internal static async Task RetryAsync(Action write, ErrorLog log, Func<bool>? superseded = null, Func<int,Task>? delay = null,string operation="clipboard-write")
     {
         delay ??= milliseconds => Task.Delay(milliseconds);
         for (int attempt = 0; ; attempt++)
         {
-            if (superseded?.Invoke() == true) { log.Event("clipboard-write", "superseded", attempt); return; }
+            if (superseded?.Invoke() == true) { log.Event(operation, "superseded", attempt); return; }
             try
             {
                 write();
-                if (attempt > 0) log.Event("clipboard-write", "recovered", attempt + 1);
+                if (attempt > 0) log.Event(operation, "recovered", attempt + 1);
                 return;
             }
             catch (ExternalException error) when (IsBusy(error))

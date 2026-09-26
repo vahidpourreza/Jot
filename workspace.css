@@ -1,4 +1,9 @@
 svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrink:0;filter:none;opacity:1}
+:root{--menu-surface:#262626;--menu-hover:#363636;--menu-line:#444}
+:root[data-theme=light]{--menu-surface:#f2f2f2;--menu-hover:#e4e4e4;--menu-line:#d6d6d6}
+.app #menu{background:var(--menu-surface)}
+.app #menu .menu-item:hover:not(:disabled),.app #menu .icon-button:hover:not(:disabled),.app #menu .direction-choices button:hover,.app #menu .direction-choices button[aria-pressed=true]{background:var(--menu-hover)}
+.app #menu .menu-separator{background:var(--menu-line)}
 .primary-button svg.lucide{filter:none}
 .app-mark{width:18px;height:18px;object-fit:contain;display:block;flex-shrink:0}
 [data-colored-icons=true] .icon-button{color:var(--ring)}
@@ -68,7 +73,17 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .editor{line-height:var(--editor-line-height,1.95)}
 .editor table{border-collapse:collapse;max-width:100%;font-size:.9em;margin-block:10px}.editor th,.editor td{border:1px solid var(--border);padding:6px 9px;min-width:45px;vertical-align:top}.editor th{background:var(--muted);font-weight:700}.editor mark{background:#fbbf2455;color:inherit}.editor figure{margin:8px 0}
 .editor h1{font-size:1.55em}.editor h3{font-size:1.2em}.editor h4,.editor h5,.editor h6{font-size:1em}.editor :is(h1,h3,h4,h5,h6){font-weight:700;line-height:1.7;unicode-bidi:plaintext;text-align:start}
-.image-app{height:100%;display:flex;flex-direction:column}.image-handle{height:42px;display:flex;align-items:center;gap:8px;padding:0 12px;user-select:none}.image-handle>span{font-size:12px;color:var(--muted-foreground)}.image-handle .spacer{flex:1}.image-stage{flex:1;min-height:0;overflow:auto;padding:16px;display:grid;place-items:center;background:repeating-conic-gradient(var(--muted) 0% 25%,var(--background) 0% 50%) 50% / 20px 20px}.image-stage img{display:block;object-fit:contain;max-width:100%;max-height:100%}.image-stage[data-fit=false]{display:block}.image-stage[data-fit=false] img{max-width:none;max-height:none;margin:auto}.image-footer{text-align:center;padding:8px;font-size:11px;color:var(--muted-foreground)}
+.editor-menu{position:fixed;z-index:100;width:224px;max-width:calc(100vw - 12px);overflow:auto;padding:5px;border:1px solid var(--menu-line);border-radius:6px;background:var(--menu-surface);color:var(--foreground);box-shadow:0 8px 24px #0004;direction:ltr}
+.editor-menu[hidden]{display:none}.editor-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:33px;padding:6px 9px;border:0;border-radius:3px;background:none;color:inherit;text-align:left;font:inherit;font-size:12px;cursor:pointer}
+.editor-menu button:hover:not(:disabled),.editor-menu button:focus-visible{background:var(--menu-hover);outline:none}.editor-menu button:disabled{opacity:.4;cursor:default}.editor-menu button.pending{opacity:1}.editor-menu button[data-action=remove-image]{color:var(--destructive,#f87171)}
+.editor-menu button svg{width:15px;height:15px;flex:none}.editor-menu button span{flex:1}.editor-menu kbd{border:0;background:none;padding:0;color:var(--muted-foreground);font:inherit;font-size:11px}
+.editor-menu [role=separator]{height:1px;background:var(--menu-line);margin:4px 5px}.editor-menu .pending svg{display:none}.editor-menu .pending:before{content:'';width:13px;height:13px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:context-spin .7s linear infinite}@keyframes context-spin{to{transform:rotate(360deg)}}
+.image-app{height:100%;display:flex;flex-direction:column}.image-handle{height:42px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;user-select:none}.image-handle>span{font-size:12px;color:var(--muted-foreground)}.image-handle .spacer{flex:1}
+.image-tools{display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 8px;background:var(--menu-surface);border-block:1px solid var(--border);flex:none}.image-tools output{min-width:48px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}.image-tools .text-button{font-size:12px;min-height:28px;padding:0 9px}.image-tools [aria-pressed=true]{background:var(--menu-hover)}
+#imageCopy[aria-busy=true] svg{display:none}#imageCopy[aria-busy=true]:before{content:'';width:14px;height:14px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:context-spin .7s linear infinite}
+.image-stage{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:none;background:repeating-conic-gradient(var(--muted) 0% 25%,var(--background) 0% 50%) 50% / 20px 20px}.image-stage[data-pannable=true]{cursor:grab}.image-stage[data-dragging=true]{cursor:grabbing}
+.image-canvas{position:relative;min-width:100%;min-height:100%}.image-canvas img{display:block;position:absolute;max-width:none;max-height:none;user-select:none;-webkit-user-drag:none;object-fit:contain}.image-footer{text-align:center;padding:7px;font-size:11px;color:var(--muted-foreground)}
+@media(prefers-reduced-motion:reduce){.editor-menu .pending:before{animation-duration:1.8s}}
 
 /* Sticky-note chrome: color belongs to the header, never to the writing surface. */
 .app{background:var(--background)}

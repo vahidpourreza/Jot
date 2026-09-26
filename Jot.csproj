@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jot</AssemblyName>
     <RootNamespace>Jot</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <ApplicationIcon>assets\jot.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
@@ -21,6 +21,7 @@
     <Content Include="styles.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="renderer.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="bidi.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="editor-menu.js;tests\context-tests.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="home.html;home.js;image.html;image.js;shared.js;design-tokens.js;workspace.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="i18n.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="settings.html;settings.js" CopyToOutputDirectory="PreserveNewest" />

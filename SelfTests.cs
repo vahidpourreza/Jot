@@ -207,6 +207,7 @@ public partial class MainWindow
                 foreach(var result in results.RootElement.EnumerateArray())checks.Add(result.Clone());
             await VerifyFontLimitCursor(checks,a);
             await VerifyBidiWriting(checks,a);
+            await VerifyEditorContextMenu(checks,a);
             await VerifyNoteMotion(checks,a);
             await VerifyInactivePinnedChrome(checks,a);
             foreach(var action in new[]{("#copyButton","clipboard-write"),("#exportButton","export")})
@@ -297,6 +298,7 @@ public partial class MainWindow
             }
             checks.Add(new{name="backup-exists",passed=File.Exists(store.FilePath+".bak")});
             var imageData=JsonSerializer.Deserialize<string>(await a.Script("editor.querySelector('img').src"))!;
+            await VerifyImageControls(checks,imageData);
             await VerifyWindowLifetimes(checks,a,b,imageData);
             using(var payload=JsonDocument.Parse(JsonSerializer.Serialize(new{html="<img src=\""+imageData+"\">",text="",image=imageData})))
             {
