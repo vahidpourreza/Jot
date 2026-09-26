@@ -13,6 +13,12 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Build-time ICO packaging: no windows, tray, user data, or single-instance activation.
+        if(e.Args.Length==2&&e.Args[0]=="--export-icon")
+        {
+            File.WriteAllBytes(Path.GetFullPath(e.Args[1]),AppIcon.RenderColor());
+            Shutdown();return;
+        }
         bool test = e.Args.Contains("--self-test");
         if (!test)
         {

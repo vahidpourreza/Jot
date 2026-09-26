@@ -4,7 +4,7 @@ A personal Windows notes app built with .NET 10. The UI uses the existing design
 
 ## Current build
 
-Run **dist\Jot-icon-alignment\Jot.exe**, keeping its adjacent files together. Jot starts quietly in the system tray; click its icon for the notes index or use Ctrl+Alt+J for a note. Open windows also appear in the taskbar. Hiding a window removes its taskbar entry while the tray remains available. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
+Run **dist\Jot-stack\Jot.exe** (v1.1.0), keeping its adjacent files together. Jot starts quietly in the system tray; click its icon for the notes index or use Ctrl+Alt+J for a note. Open windows also appear in the taskbar. Hiding a window removes its taskbar entry while the tray remains available. Quit the previous Jot release first. The running version was not replaced or interrupted during development.
 
 The .NET runtime is bundled. Windows 10 version 2004 or later and Microsoft Edge WebView2 Runtime are required. This build uses WebView2's WPF composition control with anti-aliased clipping, a subtle border, and a soft shadow. It no longer uses a jagged Win32 region for its corners.
 
@@ -35,11 +35,17 @@ If no title is set in the index, the first line supplies it. The writing surface
 
 ## Appearance
 
-The application stays neutral in both themes. Each note’s **More → color palette** independently selects from the 19 existing design-system accents; only that note’s header/top strip changes. Existing notes retain their previous header accent during migration. New notes and the pre-load CSS both start neutral gray, avoiding a crimson startup flash. Colors survive editing, reloads, and global theme changes.
+The application stays neutral in both themes. Each note’s **More → color palette** independently selects from the 19 existing design-system accents; only that note’s header/top strip changes. Existing notes retain their previous header accent during migration. New note headers now start crimson. App surfaces remain neutral, and existing notes retain their chosen colors. Colors survive editing, reloads, and global theme changes.
 
 Settings controls light/dark mode, icon weight, font size, and toolbar visibility. Changes update open windows. There is no interface-language selector: the interface is English and the note editor remains bilingual.
 
-Jot now uses an original solid folded-note mark for the executable, native windows, tray, and app branding. Its broad cutout lines remain legible at small sizes. The ICO includes 16, 20, 24, 32, 48, 64, 128, and 256px assets. The live monochrome tray glyph follows Windows' system light/dark tray theme; the fixed executable icon has a subtle contrast outline. Other interface icons retain the Lucide style.
+Jot uses the selected **B — folded stack** mark: yellow, teal, and blue papers for the executable, native windows/taskbar, and app branding. The generated PNG masters are packaged into 16, 20, 24, 32, 48, 64, 128, and 256px ICO frames. Native windows select the high-resolution color frame; the tray selects a matching system-size monochrome frame. Light/dark tray inks reuse one alpha master, so their silhouettes stay identical. Other interface icons remain Lucide. The source lock and actual-size review sheet are in docs/icon-design. Re-pin a shortcut to this build if Windows still shows an older icon; the running older version is not modified.
+
+## Image-window stability
+
+The recorded crash was a late activation/deactivation callback accessing a WebView2 control after disposal. The window now closes its message boundary and detaches callbacks before disposal; queued callbacks/replies are ignored, startup waits are cancelled when the window closes, and ordinary note closing remains save/hide. Image viewers load preferences only, retain original-resolution images, and show a local error for an undecodable image. This fixes the confirmed disposed-viewer path; it does not claim every possible future crash is impossible.
+
+Microsoft documents that accessing [CoreWebView2 after disposal throws](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.wpf.webview2.corewebview2). Diagnostics now include process ID and version as well as the existing private-content-safe stack metadata.
 
 ## Clipboard recovery and error logs
 
@@ -77,9 +83,9 @@ Core editing and all UI assets work locally. Network access is only used to retr
 
 ## Build and test
 
-    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-icon-alignment
+    dotnet publish .\Jot.csproj -c Release -r win-x64 --self-contained true -o dist/Jot-stack
     node --check .\renderer.js
-    Start-Process .\dist\Jot-icon-alignment\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
+    Start-Process .\dist\Jot-stack\Jot.exe -WindowStyle Hidden -Wait -ArgumentList '--self-test','--test-output','D:\Platform\PersonalNotes\test-results\manual'
 
 The self-test mode uses isolated data and offscreen non-activating windows, registers no global hotkey, and creates no tray icon. It never writes the user's clipboard. Clipboard formats are tested as in-memory DataObjects and renderer DataTransfer objects. Reports and UI renders stay inside the specified test directory.
 
@@ -87,4 +93,4 @@ See TESTING.md for coverage and practical limits.
 
 ## Assets
 
-IRANSansX fonts are reused from the existing local project for this personal app; their original licensing applies. Lucide licensing is in assets/icons/LICENSE. Regenerate the custom Jot ICO using scripts/make-icon.ps1. Build outputs, test artifacts, runtime profiles, logs, and notes are excluded from Git.
+IRANSansX fonts are reused from the existing local project for this personal app; their original licensing applies. Lucide licensing is in assets/icons/LICENSE. Regenerate the selected raster-based Jot ICO using scripts/make-icon.ps1. It builds the app and invokes its headless --export-icon path; no app window, tray icon, user-data access, or existing-instance activation occurs during export. Build outputs, test artifacts, runtime profiles, logs, and notes are excluded from Git.

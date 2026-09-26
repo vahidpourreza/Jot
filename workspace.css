@@ -1,5 +1,6 @@
 svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrink:0;filter:none;opacity:1}
 .primary-button svg.lucide{filter:none}
+.app-mark{width:18px;height:18px;object-fit:contain;display:block;flex-shrink:0}
 [data-colored-icons=true] .icon-button{color:var(--ring)}
 .error{direction:inherit}
 .jot-logo{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--primary);color:var(--primary-foreground);flex-shrink:0}.jot-logo svg{width:18px;height:18px}

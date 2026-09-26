@@ -1,8 +1,12 @@
 # Jot workspace verification
 
-The current `dist/Jot-icon-alignment` build passed **136/136 background checks** and a Release publish with no warnings. It retains **Ctrl+Alt+J**.
+The current `dist/Jot-stack` build passed **160/160 background checks** and a Release publish with no warnings. It retains **Ctrl+Alt+J**.
 
-Evidence for this release is under **test-results/icon-alignment-01/**: results.json, composed active/inactive note windows, smaller corner masks, color palettes, deletion confirmation, pinned-note light/dark states, header More menus at normal/minimum size, monochrome icon size samples, and diagnostic test logs.
+Evidence for this release is under **test-results/stack-final/**: results.json, composed active/inactive note windows, smaller corner masks, color palettes, deletion confirmation, pinned-note light/dark states, header More menus at normal/minimum size, monochrome icon size samples, and diagnostic test logs.
+
+New lifetime regression checks cover six image-viewer open/fit/actual-size/close cycles, replayed and queued focus callbacks after disposal, four closes during startup, undecodable images, and normal note save/hide/reopen. The original notes and shared session remain intact. The close-button test harness recognizes destruction of its DevTools target instead of waiting forever for a reply from a closed viewer. Startup awaits are cancelled per window; the shared environment is not cancelled. Closing-window errors are not hidden by a blanket dispatcher exception handler.
+
+Icon checks verify colored native app frames, highest-resolution window selection, eight ICO sizes, identical alpha masks for the two tray inks, transparency, small-size visibility, and monochrome contrast. docs/icon-design/final-icon-board.png shows actual packaged pixels. Live Windows taskbar pin/cache behavior is still not manipulated.
 
 The alignment regression checks measure the actual SVG rectangles—not just the button boxes. Every footer glyph is 16×16, centered in its button, and shares the same vertical center in dark/light themes and at the minimum window width. The original T show/hide icon is restored and remains upright in both expanded/collapsed states. The toolbar captures, including aligned-toolbar-minimum.png, were visually inspected.
 
@@ -16,7 +20,7 @@ Menu checks require all 19 distinct colors to be visible and hit-testable at onc
 
 Bottom-toolbar checks verify bold/italic/underline, strikethrough, bullet/numbered lists, color, clear formatting, image insertion, and the toggle fit on a single footer row at minimum size. Strikethrough/clear-formatting actions work inline, with no More tools popup. The T glyph takes the selected text color and has no separate underline marker; the compact color picker fits above the row. Rich paste retains headings/code even though the Text-style dropdown is removed.
 
-New-note checks verify neutral persisted defaults; a separate CSS-before-preferences check verifies neutral startup colors in both themes. Existing selected note colors remain intact. Pinned/inactive checks verify the filled foreground pin stays visible without a solid background, and all hovered header controls remain below the 8px color strip in light/dark mode. These tests never actually enable Topmost on the desktop.
+New-note checks verify crimson header defaults with a neutral app theme; a separate CSS-before-preferences check verifies neutral startup colors in both themes. Existing selected note colors remain intact. Pinned/inactive checks verify the filled foreground pin stays visible without a solid background, and all hovered header controls remain below the 8px color strip in light/dark mode. These tests never actually enable Topmost on the desktop.
 
 Motion checks inspect real CSS transitions and Web Animations: intermediate header heights, 8px collapsed / 34px expanded states, stationary editor bounds, full-height menu reveal, inert closing controls, rapid reversal from the current frame, and cleanup. Paused start/middle/end frames are captured in more-opening-*.png and visually inspected; the new reveal is not tested merely by checking whether an Animation object exists. Toolbar and color-picker opening/closing plus reduced-motion behavior are also checked. DevTools motion emulation affects only the isolated test WebView and is reset afterward. Ordinary pointer checks wait until the target animation settles; dedicated motion checks inspect intermediate states.
 
@@ -24,7 +28,7 @@ Existing checks cover neutral global chrome with independent blue/rose note head
 
 Deletion tests cover Cancel as default focus; cancel preserving the note; recovery-path and main-store-write failures preserving live notes; disabled/pending confirmation; saving the latest draft and original image before deletion; closing only the selected window; updating the index; rejection of stale saves, reopening a deleted ID, and cross-note deletion. Synthetic archived notes remain in the isolated test output, never the user's note store.
 
-Icon checks cover eight ICO sizes from 16 to 256px and visible monochrome detail at 16, 20, 24, 32, 48, and 64px against light/dark backgrounds. Rendered small icons and native composition captures were visually inspected. In the final run, opening the offscreen test home took about 5.71 seconds and the 66,000-character write/save test took 191ms; these are local measurements, not startup or latency guarantees.
+Icon checks cover eight ICO sizes from 16 to 256px and visible monochrome detail at 16, 20, 24, 32, 48, and 64px against light/dark backgrounds. Rendered small icons and native composition captures were visually inspected. In the final run, opening the offscreen test home took about 3.72 seconds and the 66,000-character write/save test took 363ms; these are local measurements, not startup or latency guarantees.
 
 Existing checks cover: no shutdown/grip controls in notes; X wired to save/hide; New note aligned to the left; More covering the top of the note and constrained to small windows; transparent active Pin styling; neutral footer icons in both themes even when legacy preferences request colored icons; and taskbar eligibility for production home/note/image windows. Taskbar property checks construct but never display those windows; no live taskbar or foreground interaction is performed.
 
@@ -57,4 +61,4 @@ Visual checks used WebView2 captures and an offscreen WPF render of the actual c
 
 The harness does not manipulate the user's actual clipboard, manually drag a live desktop window, press the global hotkey, or interact with another app's paste behavior. Receiving applications determine which clipboard representations they support. Remote image downloading is guarded in code but is not tested against arbitrary external/private websites.
 
-Run instructions are in README.md. The prior live app was left untouched; the new build is in dist/Jot-icon-alignment. Real mixed-content paste into Codex and live Windows tray/taskbar visibility/theme changes were not exercised. Clipboard-lock tests inject the actual HRESULT through the production retry routine without locking or changing the user's clipboard. DataObjects, generated native icon pixels, and hidden-window lifecycle were tested offscreen.
+Run instructions are in README.md. The prior live app was left untouched; the new build is in dist/Jot-stack. Real mixed-content paste into Codex and live Windows tray/taskbar visibility/theme changes were not exercised. Clipboard-lock tests inject the actual HRESULT through the production retry routine without locking or changing the user's clipboard. DataObjects, generated native icon pixels, and hidden-window lifecycle were tested offscreen.

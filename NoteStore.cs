@@ -70,7 +70,7 @@ internal sealed class NoteStore(string root)
         var id = Guid.NewGuid().ToString();
         await Mutate(data => {
             data["notes"]!.AsArray().Insert(0, new JsonObject {
-                ["id"] = id, ["color"] = "neutral", ["html"] = "<p dir=\"auto\"><br></p>", ["plain"] = "", ["updatedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                ["id"] = id, ["color"] = "crimson", ["html"] = "<p dir=\"auto\"><br></p>", ["plain"] = "", ["updatedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             });
             data["activeId"] = id;
         });

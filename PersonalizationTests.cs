@@ -74,10 +74,39 @@ public partial class MainWindow
 
     private void VerifyIconSizes(List<object> checks)
     {
-        using var board=new System.Drawing.Bitmap(450,180);
+        using var board=new System.Drawing.Bitmap(650,540);
         using var graphics=System.Drawing.Graphics.FromImage(board);
         graphics.Clear(System.Drawing.Color.FromArgb(245,245,245));
-        using var dark=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(24,24,24));graphics.FillRectangle(dark,0,90,450,90);
+        using var dark=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(24,24,24));graphics.FillRectangle(dark,0,145,410,125);graphics.FillRectangle(dark,0,400,410,125);
+        using var font=new System.Drawing.Font("Segoe UI",10);
+        graphics.DrawString("Jot · selected B / native icon exports",font,System.Drawing.Brushes.Black,12,6);
+        bool colorVisible=true,transparent=true;
+        foreach(bool light in new[]{true,false})
+        {
+            using var stream=new MemoryStream(AppIcon.RenderColor());
+            int x=14,y=light?50:170;
+            foreach(int size in new[]{16,20,24,32,48,64})
+            {
+                using var icon=new System.Drawing.Icon(stream,size,size);using var bitmap=icon.ToBitmap();
+                int colored=0;
+                for(int row=0;row<bitmap.Height;row++)for(int col=0;col<bitmap.Width;col++){var p=bitmap.GetPixel(col,row);if(p.A>200&&Math.Max(p.R,Math.Max(p.G,p.B))-Math.Min(p.R,Math.Min(p.G,p.B))>40)colored++;}
+                colorVisible &= colored>size*size/4;
+                transparent &= bitmap.GetPixel(0,0).A==0&&bitmap.GetPixel(size-1,size-1).A==0;
+                graphics.DrawImageUnscaled(bitmap,x,y);graphics.DrawString(size.ToString(),font,light?System.Drawing.Brushes.Black:System.Drawing.Brushes.White,x,y+68);x+=size+20;stream.Position=0;
+            }
+        }
+        using(var grid=new System.Drawing.Pen(System.Drawing.Color.FromArgb(45,100,100,100)))
+            for(int offset=0;offset<=128;offset+=32){graphics.DrawLine(grid,480+offset,40,480+offset,168);graphics.DrawLine(grid,480,40+offset,608,40+offset);}
+        using(var largeStream=new MemoryStream(AppIcon.RenderColor()))
+        using(var large=new System.Drawing.Icon(largeStream,128,128))
+        using(var bitmap=large.ToBitmap())graphics.DrawImageUnscaled(bitmap,480,40);
+        graphics.DrawString("B · folded stack",font,System.Drawing.Brushes.Black,445,190);
+        graphics.DrawString("128 px packaged icon",font,System.Drawing.Brushes.Black,445,212);
+        graphics.DrawString("6% margin (min. 1 px)",font,System.Drawing.Brushes.Black,445,234);
+        graphics.DrawString("Color app / taskbar",font,System.Drawing.Brushes.Black,445,270);
+        graphics.DrawString("One tray alpha master",font,System.Drawing.Brushes.Black,445,300);
+        graphics.DrawString("Dark / light adaptive ink",font,System.Drawing.Brushes.Black,445,322);
+        graphics.DrawString("Same shape in both modes",font,System.Drawing.Brushes.Black,445,344);
         var allVisible=true;
         foreach(var light in new[]{true,false})
         {
@@ -88,15 +117,28 @@ public partial class MainWindow
                 using var icon=new System.Drawing.Icon(stream,size,size);using var bitmap=icon.ToBitmap();
                 int opaque=0;for(int y=0;y<bitmap.Height;y++)for(int col=0;col<bitmap.Width;col++)if(bitmap.GetPixel(col,y).A>200)opaque++;
                 allVisible &= bitmap.Width==size&&opaque>size*size/4;
-                graphics.DrawImageUnscaled(bitmap,x,light?14:104);x+=size+20;
+                int drawY=light?300:425;
+                graphics.DrawImageUnscaled(bitmap,x,drawY);graphics.DrawString(size.ToString(),font,light?System.Drawing.Brushes.Black:System.Drawing.Brushes.White,x,drawY+68);x+=size+20;
                 stream.Position=0;
             }
         }
         board.Save(Path.Combine(testOutput,"icon-sizes-light-dark.png"));
         checks.Add(new{name="custom-monochrome-icon-legible-at-small-sizes",passed=allVisible});
+        checks.Add(new{name="colored-app-icon-visible-in-all-small-sizes",passed=colorVisible&&transparent});
+        checks.Add(new{name="native-window-uses-high-resolution-colored-icon",passed=Icon is System.Windows.Media.Imaging.BitmapSource source&&source.PixelWidth>=128});
+        using(var darkStream=new MemoryStream(AppIcon.RenderMonochrome(true)))
+        using(var lightStream=new MemoryStream(AppIcon.RenderMonochrome(false)))
+        using(var darkIcon=new System.Drawing.Icon(darkStream,32,32))
+        using(var lightIcon=new System.Drawing.Icon(lightStream,32,32))
+        using(var darkBitmap=darkIcon.ToBitmap())
+        using(var lightBitmap=lightIcon.ToBitmap())
+        {
+            bool sameAlpha=true;for(int y=0;y<32;y++)for(int x=0;x<32;x++)sameAlpha&=darkBitmap.GetPixel(x,y).A==lightBitmap.GetPixel(x,y).A;
+            checks.Add(new{name="light-dark-tray-shape-is-identical",passed=sameAlpha});
+        }
         using var reader=new BinaryReader(File.OpenRead(Path.Combine(AppContext.BaseDirectory,"assets","jot.ico")));
         reader.ReadUInt16();reader.ReadUInt16();var count=reader.ReadUInt16();var sizes=new List<int>();
         for(int i=0;i<count;i++){var size=reader.ReadByte();sizes.Add(size==0?256:size);reader.ReadBytes(15);}
-        checks.Add(new{name="executable-icon-includes-eight-native-resolutions",passed=sizes.SequenceEqual(new[]{16,20,24,32,48,64,128,256})});
+        checks.Add(new{name="executable-icon-includes-eight-native-resolutions",passed=sizes.Order().SequenceEqual(new[]{16,20,24,32,48,64,128,256})});
     }
 }

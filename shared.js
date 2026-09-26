@@ -65,19 +65,21 @@ window.JotDesign = {
     return {...accent[mode],slug:accent.slug};
   },
   icon(name) {
+    if(name==='jot'){
+      const mark=document.createElement('img');mark.src='assets/jot-color.png';mark.alt='';mark.className='app-mark';mark.setAttribute('aria-hidden','true');return mark;
+    }
     const element = document.createElementNS('http://www.w3.org/2000/svg','svg');
     element.setAttribute('viewBox','0 0 24 24');
     element.setAttribute('fill','none'); element.setAttribute('stroke','currentColor');
     element.setAttribute('stroke-linecap','round'); element.setAttribute('stroke-linejoin','round');
     element.setAttribute('aria-hidden','true'); element.classList.add('lucide');
-    if(name==='jot')element.innerHTML='<path fill="currentColor" stroke="none" fill-rule="evenodd" d="M5 2h8v6a2 2 0 0 0 2 2h6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM7 12v2h10v-2Zm0 4v2h7v-2ZM15 2l6 6h-6Z"/>';
-    else if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
+    if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
     else element.innerHTML = window.JotIconPaths[name] || window.JotIconPaths['notepad-text'];
     return element;
   },
   icons(root=document) {
     root.querySelectorAll('[data-icon]').forEach(node=>{
-      if (!node.querySelector('svg')) node.append(this.icon(node.dataset.icon));
+      if (!node.querySelector('svg,.app-mark')) node.append(this.icon(node.dataset.icon));
     });
   },
   drag(element) {

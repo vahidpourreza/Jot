@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Web.WebView2.Core;
 
 namespace Jot;
 
@@ -21,6 +22,10 @@ public partial class MainWindow : Window
     private HwndSource? source;
     private System.Windows.Forms.NotifyIcon? tray;
     private bool initialized, allowClose;
+    private bool closingPermanently, browserDisposed, windowClosed;
+    private CoreWebView2? webView;
+    private readonly CancellationTokenSource windowLifetime = new();
+    internal bool InitializationFinished { get; private set; }
     private string pageUri = "";
     private TaskCompletionSource? flushCompletion;
     private System.Drawing.Icon? themedIcon;
@@ -47,6 +52,12 @@ public partial class MainWindow : Window
     private string InputDirection() => DirectionForLanguage((int)((long)GetKeyboardLayout(0) & 0xffff));
     private void NotifyInputLanguage() => Post(new { @event = "input-language", direction = InputDirection() });
     private void OnInputLanguageChanged(object sender, System.Windows.Input.InputLanguageEventArgs e) => NotifyInputLanguage();
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        if (closingPermanently) return;
+        NotifyInputLanguage(); Post(new { @event = "active-window", active = true });
+    }
+    private void OnWindowDeactivated(object? sender, EventArgs e) => Post(new { @event = "active-window", active = false });
 
     internal MainWindow(JotSession session, string mode = "home", string? noteId = null, bool runTests = false)
     {
@@ -68,14 +79,15 @@ public partial class MainWindow : Window
             Top = Math.Max(area.Top + 12, area.Bottom - Height - 24 - offset);
         }
         session.Windows.Add(this);
-        Activated += (_, _) => { NotifyInputLanguage(); Post(new { @event = "active-window", active = true }); };
-        Deactivated += (_, _) => Post(new { @event = "active-window", active = false });
+        Activated += OnWindowActivated;
+        Deactivated += OnWindowDeactivated;
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged += OnInputLanguageChanged;
         if(!testing&&Mode=="home")Microsoft.Win32.SystemEvents.UserPreferenceChanged+=OnSystemPreferenceChanged;
     }
 
     internal void Reveal()
     {
+        if (closingPermanently) return;
         Show();
         if (!testing) { WindowState = WindowState.Normal; Activate(); }
         Post(new { @event = "focus" });
@@ -87,7 +99,7 @@ public partial class MainWindow : Window
     }
     private void PrepareNativeHost()
     {
-        if(nativeReady)return;
+        if(nativeReady||closingPermanently)return;
         var handle=new WindowInteropHelper(this).EnsureHandle();
         source=HwndSource.FromHwnd(handle);
         source?.AddHook(WndProc);nativeReady=true;
@@ -100,44 +112,55 @@ public partial class MainWindow : Window
     }
     private void OnSystemPreferenceChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs args)
     {
-        if(Dispatcher.HasShutdownStarted)return;
+        if(closingPermanently||Dispatcher.HasShutdownStarted)return;
         _=Dispatcher.BeginInvoke(()=> {
             foreach(var window in session.Windows.ToArray())window.UpdateNativeIcon();
         });
     }
     internal void ShowHomeView(bool settings)
     {
-        if (Mode != "home" || IsSettingsView == settings) return;
+        if (closingPermanently || Mode != "home" || IsSettingsView == settings) return;
         IsSettingsView = settings;
-        if (Browser.CoreWebView2 is not null)
+        if (webView is not null)
             _ = Dispatcher.BeginInvoke(() => {
+                if (closingPermanently || webView is null) return;
                 var next = new Uri(Path.Combine(AppContext.BaseDirectory, IsSettingsView ? "settings.html" : "home.html")).AbsoluteUri;
                 if (next == pageUri) return;
                 pageUri = next;
-                Browser.CoreWebView2.Navigate(pageUri);
+                webView.Navigate(pageUri);
             });
     }
-    internal void Post(object message)
+    internal bool Post(object message)
     {
-        if (Browser.CoreWebView2 is not null)
-            Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message));
+        // CoreWebView2's getter itself throws after Dispose. Never query a dead control.
+        if (closingPermanently || browserDisposed || webView is null) return false;
+        try { webView.PostWebMessageAsJson(JsonSerializer.Serialize(message)); return true; }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or COMException)
+        {
+            session.Log.Error("webview-post", ex, Mode);
+            return false;
+        }
     }
     private void RoundWindow()
     {
-        if (Browser is null || ActualWidth < 20 || ActualHeight < 20) return;
+        if (closingPermanently || Browser is null || ActualWidth < 20 || ActualHeight < 20) return;
         Browser.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth-18), Math.Max(0, ActualHeight-18)), 5, 5);
     }
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RoundWindow();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (initialized) return;
+        if (initialized || closingPermanently) return;
         initialized = true;
         try
         {
             PrepareNativeHost();RoundWindow();
-            await Browser.EnsureCoreWebView2Async(await session.EnvironmentAsync());
+            var environment = await session.EnvironmentAsync().WaitAsync(windowLifetime.Token);
+            if (closingPermanently) return;
+            await Browser.EnsureCoreWebView2Async(environment).WaitAsync(windowLifetime.Token);
+            if (closingPermanently) return;
             var core = Browser.CoreWebView2;
+            webView = core;
             core.Settings.AreDevToolsEnabled = testing;
             core.Settings.AreDefaultContextMenusEnabled = true;
             core.Settings.IsStatusBarEnabled = false;
@@ -150,11 +173,13 @@ public partial class MainWindow : Window
             core.ProcessFailed += (_, args) => session.Log.Event("webview-process-failed", args.ProcessFailedKind.ToString());
             if (testing)
             {
-                await core.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}");
+                await core.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}").WaitAsync(windowLifetime.Token);
+                if (closingPermanently) return;
                 core.GetDevToolsProtocolEventReceiver("Runtime.exceptionThrown").DevToolsProtocolEventReceived += (_, args) => RuntimeErrors.Add(args.ParameterObjectAsJson);
             }
             core.NavigationCompleted += async (_, args) =>
             {
+                if (closingPermanently) return;
                 if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); return; }
                 if (runTests) await RunSelfTests();
                 else if (!testing && Mode == "home" && hotkeyUnavailable)
@@ -169,10 +194,12 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (closingPermanently) return;
             LogFailure(ex);
             if (testing) System.Windows.Application.Current.Shutdown(1);
             else Title = "Jot — initialization failed; see logs";
         }
+        finally { InitializationFinished = true; }
     }
 
     private void CreateTray()
@@ -188,22 +215,28 @@ public partial class MainWindow : Window
     }
     internal async Task Flush()
     {
-        if (Mode != "note" || Browser.CoreWebView2 is null) return;
+        if (closingPermanently || Mode != "note" || webView is null) return;
         if (flushCompletion is not null) { await flushCompletion.Task; return; }
         flushCompletion = new TaskCompletionSource();
-        Post(new { @event = "flush", intent = "ack" });
-        try { await flushCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16)); }
+        try
+        {
+            if (!Post(new { @event = "flush", intent = "ack" })) throw new IOException("The editor is unavailable. Your note window has been kept open.");
+            await flushCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16));
+        }
         finally { flushCompletion = null; }
     }
-    internal void ClosePermanently() { allowClose = true; Close(); }
+    internal void ClosePermanently() { if (closingPermanently) return; allowClose = true; Close(); }
 
     private async void OnWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (e.Source != pageUri) return;
+        if (closingPermanently) return;
         int id = 0;
         string action = "parse-message";
+        string messageSource = "";
         try
         {
+            messageSource = e.Source;
+            if (messageSource != pageUri) return;
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
             var message = doc.RootElement;
             if (message.TryGetProperty("id", out var ident)) id = ident.GetInt32();
@@ -216,6 +249,7 @@ public partial class MainWindow : Window
                 case "input-language": result = InputDirection(); break;
                 case "log-error": session.Log.Renderer(payload); result = true; break;
                 case "load": result = await store.Load(); break;
+                case "preferences-load": result = (await store.Load())?.GetProperty("prefs") ?? JsonSerializer.SerializeToElement(NoteStore.Defaults()); break;
                 case "import": await store.Import(payload); break;
                 case "new-note": result = (await session.NewNote()).NoteId; break;
                 case "open-note":
@@ -257,7 +291,8 @@ public partial class MainWindow : Window
                     if (!testing) { ReleaseCapture(); SendMessage(source!.Handle, 0x00A1, 2, 0); }
                     break;
                 case "hide":
-                    if (!testing) { if (Mode == "image") _ = Dispatcher.BeginInvoke(ClosePermanently); else Hide(); }
+                    if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
+                    else if (!testing) Hide();
                     break;
                 case "quit":
                     if (Mode == "note") throw new InvalidOperationException("Quit Jot from Home, Settings, or the tray.");
@@ -298,20 +333,21 @@ public partial class MainWindow : Window
                 default: throw new InvalidOperationException("Unsupported action.");
             }
             if (testing) TestHostActions.Add(action);
-            if (id > 0 && Browser.CoreWebView2 is not null && e.Source == pageUri) Post(new { id, ok = true, value = result });
+            if (id > 0 && !closingPermanently && messageSource == pageUri) Post(new { id, ok = true, value = result });
         }
         catch (Exception ex)
         {
             session.Log.Error(action, ex, Mode);
             var busy = RichClipboard.IsBusy(ex);
             var message = busy ? "کلیپ‌بورد موقتاً مشغول است. دوباره کپی کنید؛ یادداشت شما محفوظ است." : ex.Message;
-            if (id > 0 && e.Source == pageUri)
+            if (id > 0 && !closingPermanently && messageSource == pageUri)
                 Post(new { id, ok = false, error = message, operation = action, code = busy ? "clipboard-busy" : "operation-failed", logged = true });
         }
     }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        if (closingPermanently) return 0;
         if (msg == 0x0051) _ = Dispatcher.BeginInvoke(NotifyInputLanguage);
         if (msg == 0x0084)
         {
@@ -341,28 +377,56 @@ public partial class MainWindow : Window
     }
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (closingPermanently) return;
         if (!allowClose && Mode != "image")
         {
             e.Cancel = true;
-            try { await Flush(); Hide(); }
+            try { await Flush(); if (!closingPermanently) Hide(); }
             catch (Exception ex) { session.Log.Error("close-window",ex,Mode);Post(new { @event = "warning", message = ex.Message }); }
             return;
         }
-        if (source is not null) UnregisterHotKey(source.Handle, HotkeyId);
+        // Close the message boundary before disposal or any late activation callbacks.
+        closingPermanently = true;
+        windowLifetime.Cancel();
+        session.Windows.Remove(this);
+        Activated -= OnWindowActivated; Deactivated -= OnWindowDeactivated;
+        Loaded -= OnLoaded; SizeChanged -= OnSizeChanged;
+        if (source is not null) { UnregisterHotKey(source.Handle, HotkeyId); source.RemoveHook(WndProc); }
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged -= OnInputLanguageChanged;
         if(!testing&&Mode=="home")Microsoft.Win32.SystemEvents.UserPreferenceChanged-=OnSystemPreferenceChanged;
-        tray?.Dispose(); themedIcon?.Dispose(); Browser.Dispose(); session.Windows.Remove(this);
+        if (webView is not null) webView.WebMessageReceived -= OnWebMessage;
+        webView = null;
+        // Release the composition controller while its native parent still exists.
+        if (!browserDisposed) { Browser.Dispose(); browserDisposed = true; }
+    }
+    protected override void OnClosed(EventArgs e)
+    {
+        webView = null;
+        flushCompletion?.TrySetException(new IOException("The note window closed before saving completed."));
+        tray?.Dispose(); tray = null;
+        themedIcon?.Dispose(); themedIcon = null;
+        ImageSource = null;
+        windowClosed = true;
+        windowLifetime.Dispose();
+        base.OnClosed(e);
     }
     private void UpdateNativeIcon()
     {
+        if (closingPermanently) return;
+        if (Icon is null)
+        {
+            using var colorStream=new MemoryStream(AppIcon.RenderColor());
+            var decoder=new IconBitmapDecoder(colorStream,BitmapCreateOptions.None,BitmapCacheOption.OnLoad);
+            var largest=decoder.Frames.MaxBy(frame=>frame.PixelWidth)!;
+            largest.Freeze();Icon=largest;
+        }
         bool light=AppIcon.WindowsUsesLightTray();
-        var key=light?"monochrome-dark":"monochrome-light";
+        var size=System.Windows.Forms.SystemInformation.SmallIconSize;
+        var key=(light?"monochrome-dark":"monochrome-light")+"-"+size.Width;
         if (key == NativeIconKey) return;
         var bytes = AppIcon.RenderMonochrome(light);
         using var stream = new MemoryStream(bytes);
-        var next = new System.Drawing.Icon(stream,32,32);
-        using var wpfStream = new MemoryStream(bytes);
-        Icon = BitmapFrame.Create(wpfStream,BitmapCreateOptions.None,BitmapCacheOption.OnLoad);
+        var next = new System.Drawing.Icon(stream,size.Width,size.Height);
         var previous = themedIcon;
         themedIcon = next;
         if (tray is not null) tray.Icon = next;

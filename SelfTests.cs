@@ -40,8 +40,25 @@ public partial class MainWindow
         await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
         using var point=JsonDocument.Parse(await Script("(()=>{const r=document.querySelector("+JsonSerializer.Serialize(selector)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
         var x=point.RootElement.GetProperty("x").GetDouble();var y=point.RootElement.GetProperty("y").GetDouble();
-        foreach(var type in new[]{"mouseMoved","mousePressed","mouseReleased"})
-            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",JsonSerializer.Serialize(new {type,x,y,button=type=="mouseMoved"?"none":"left",clickCount=type=="mouseMoved"?0:1}));
+        var closed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void ClosedHandler(object? sender,EventArgs args)=>closed.TrySetResult();
+        Closed+=ClosedHandler;
+        try
+        {
+            foreach(var type in new[]{"mouseMoved","mousePressed","mouseReleased"})
+            {
+                if(closingPermanently)return;
+                var dispatch=Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",JsonSerializer.Serialize(new {type,x,y,button=type=="mouseMoved"?"none":"left",clickCount=type=="mouseMoved"?0:1}));
+                // A real close button may destroy the DevTools target before its reply arrives.
+                if(await Task.WhenAny(dispatch,closed.Task).WaitAsync(TimeSpan.FromSeconds(20))==closed.Task)
+                {
+                    _=dispatch.ContinueWith(task=>{_ = task.Exception;},TaskContinuationOptions.OnlyOnFaulted|TaskContinuationOptions.ExecuteSynchronously);
+                    return;
+                }
+                await dispatch;
+            }
+        }
+        finally { Closed-=ClosedHandler; }
     }
     private async Task Reload()
     {
@@ -120,7 +137,7 @@ public partial class MainWindow
             var a=session.Windows.First(w=>w.Mode=="note");
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
-            checks.Add(new{name="new-notes-default-to-neutral-not-crimson",passed=await a.Script("activeNote().color==='neutral'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='neutral'")=="true"});
+            checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});
             await a.Script("setInputDirection('rtl')");
             await a.Capture("empty-persian");
             await a.Script("setInputDirection('ltr')");
@@ -162,7 +179,7 @@ public partial class MainWindow
             await settings.ClickControl("[data-weight='2.4']");
             await a.WaitFor("model.prefs.iconWeight===2.4");
             for(int i=0;i<100&&(a.NativeIconKey==""||a.NativeIconKey!=NativeIconKey);i++)await Task.Delay(30);
-            checks.Add(new{name="native-icons-remain-monochrome",passed=a.NativeIconKey==NativeIconKey&&b.NativeIconKey==NativeIconKey&&NativeIconKey.StartsWith("monochrome-")});
+            checks.Add(new{name="tray-icons-adapt-monochrome-independently-of-colored-app-icon",passed=a.NativeIconKey==NativeIconKey&&b.NativeIconKey==NativeIconKey&&NativeIconKey.StartsWith("monochrome-")});
             checks.Add(new{name="neutral-application-with-independent-note-colors",passed=await b.Script("document.documentElement.dataset.color==='neutral'&&document.documentElement.dataset.coloredIcons==='false'&&app.dataset.noteColor==='rose'")=="true"&&await a.Script("app.dataset.noteColor==='blue'")=="true"});
             checks.Add(new{name="nineteen-design-system-note-colors",passed=await a.Script("document.querySelectorAll('#noteColors button[data-note-color]').length===19")=="true"});
             checks.Add(new{name="global-color-controls-removed",passed=await settings.Script("document.querySelector('#accentChoices,#coloredIcons')===null")=="true"});
@@ -272,6 +289,7 @@ public partial class MainWindow
             }
             checks.Add(new{name="backup-exists",passed=File.Exists(store.FilePath+".bak")});
             var imageData=JsonSerializer.Deserialize<string>(await a.Script("editor.querySelector('img').src"))!;
+            await VerifyWindowLifetimes(checks,a,b,imageData);
             using(var payload=JsonDocument.Parse(JsonSerializer.Serialize(new{html="<img src=\""+imageData+"\">",text="",image=imageData})))
             {
                 var clipboard=RichClipboard.Create(payload.RootElement);

@@ -22,12 +22,12 @@ internal sealed class ErrorLog(string root, long maxBytes = 1024 * 1024)
             file = Path.GetFileName(frame.GetFileName()),
             line = frame.GetFileLineNumber()
         });
-        Write(new { utc = DateTimeOffset.UtcNow, runId, version = typeof(App).Assembly.GetName().Version?.ToString(),
+        Write(new { utc = DateTimeOffset.UtcNow, runId, processId = Environment.ProcessId, version = typeof(App).Assembly.GetName().Version?.ToString(),
             severity = "error", operation = Token(operation), area = Token(area),
             exception = exception.GetType().FullName, hresult = $"0x{exception.HResult:X8}", frames });
     }
     public void Event(string operation, string outcome, int attempts = 0) =>
-        Write(new { utc = DateTimeOffset.UtcNow, runId, severity = "info",
+        Write(new { utc = DateTimeOffset.UtcNow, runId, processId = Environment.ProcessId, version = typeof(App).Assembly.GetName().Version?.ToString(), severity = "info",
             operation = Token(operation), outcome = Token(outcome), attempts });
     public void Renderer(JsonElement data)
     {
