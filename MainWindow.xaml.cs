@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     private CoreWebView2? webView;
     private readonly CancellationTokenSource windowLifetime = new();
     internal bool InitializationFinished { get; private set; }
+    internal bool ContentReady { get; private set; }
+    internal long ContentReadyMs { get; private set; }
     private string pageUri = "";
     private TaskCompletionSource? flushCompletion;
     private System.Drawing.Icon? themedIcon;
@@ -64,6 +66,8 @@ public partial class MainWindow : Window
         this.session = session; Mode = mode; NoteId = noteId; this.runTests = runTests;
         testing = session.Testing; testOutput = session.Output; store = session.Store;
         InitializeComponent();
+        ContentReady = mode != "note";
+        if (!ContentReady) { Opacity = 0; ShowActivated = false; }
         ShowInTaskbar=!testing;
         Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(23,23,23);
         UpdateNativeIcon();
@@ -89,13 +93,19 @@ public partial class MainWindow : Window
     {
         if (closingPermanently) return;
         Show();
-        if (!testing) { WindowState = WindowState.Normal; Activate(); }
+        if (!testing) { WindowState = WindowState.Normal; if (ContentReady) Activate(); }
         Post(new { @event = "focus" });
     }
     internal void StartInTray()
     {
         try { PrepareNativeHost(); }
         catch(Exception error){LogFailure(error);}
+    }
+    private void RevealReadyContent()
+    {
+        if (closingPermanently || ContentReady) return;
+        ContentReady = true; ContentReadyMs = startup.ElapsedMilliseconds;
+        if (!testing) { Opacity = 1; ShowActivated = true; if (IsVisible) Activate(); }
     }
     private void PrepareNativeHost()
     {
@@ -180,7 +190,7 @@ public partial class MainWindow : Window
             core.NavigationCompleted += async (_, args) =>
             {
                 if (closingPermanently) return;
-                if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); return; }
+                if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); RevealReadyContent(); return; }
                 if (runTests) await RunSelfTests();
                 else if (!testing && Mode == "home" && hotkeyUnavailable)
                 {
@@ -196,6 +206,7 @@ public partial class MainWindow : Window
         {
             if (closingPermanently) return;
             LogFailure(ex);
+            RevealReadyContent();
             if (testing) System.Windows.Application.Current.Shutdown(1);
             else Title = "Jot — initialization failed; see logs";
         }
@@ -205,13 +216,14 @@ public partial class MainWindow : Window
     private void CreateTray()
     {
         tray = new System.Windows.Forms.NotifyIcon { Text = "Jot · Ctrl+Alt+J", Visible = true, Icon = themedIcon };
-        var menu = new System.Windows.Forms.ContextMenuStrip();
-        menu.Items.Add("یادداشت‌ها", null, (_, _) => Dispatcher.Invoke(() => session.Home()));
-        menu.Items.Add("New note", null, async (_, _) => { try { await session.NewNote(); } catch (Exception ex) { session.Log.Error("tray-new-note",ex);Post(new { @event = "warning", message = ex.Message }); } });
-        menu.Items.Add("Quit", null, async (_, _) => { try { await session.Quit(); } catch (Exception ex) { session.Log.Error("tray-quit",ex);Post(new { @event = "warning", message = ex.Message }); } });
-        tray.ContextMenuStrip = menu;
-        UpdateTrayLanguage();
-        tray.MouseClick += (_, args) => { if(args.Button==System.Windows.Forms.MouseButtons.Left)Dispatcher.Invoke(()=>session.Home()); };
+        tray.MouseClick += async (_, args) => {
+            try
+            {
+                if(args.Button==System.Windows.Forms.MouseButtons.Left){session.TrayMenu?.Dismiss();session.Home();}
+                else if(args.Button==System.Windows.Forms.MouseButtons.Right)await session.ShowTrayMenu(System.Windows.Forms.Cursor.Position);
+            }
+            catch(Exception error){session.Log.Error("tray-open",error);Post(new{@event="warning",message="Could not open Jot. Please try again."});}
+        };
     }
     internal async Task Flush()
     {
@@ -249,6 +261,16 @@ public partial class MainWindow : Window
                 case "input-language": result = InputDirection(); break;
                 case "log-error": session.Log.Renderer(payload); result = true; break;
                 case "load": result = await store.Load(); break;
+                case "index-load": result = await store.LoadIndex(); break;
+                case "note-load":
+                    if (Mode != "note") throw new InvalidOperationException("Only a note window can load its editor.");
+                    var stored = await store.Load() ?? throw new InvalidDataException("Note not found.");
+                    var ownNote = stored.GetProperty("notes").EnumerateArray().FirstOrDefault(n => n.GetProperty("id").GetString() == NoteId);
+                    if (ownNote.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Note not found.");
+                    result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing },
+                        model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = stored.GetProperty("prefs") } };
+                    break;
+                case "editor-ready": case "editor-failed": RevealReadyContent(); break;
                 case "preferences-load": result = (await store.Load())?.GetProperty("prefs") ?? JsonSerializer.SerializeToElement(NoteStore.Defaults()); break;
                 case "import": await store.Import(payload); break;
                 case "new-note": result = (await session.NewNote()).NoteId; break;
@@ -261,13 +283,14 @@ public partial class MainWindow : Window
                     session.OpenNote(noteId); break;
                 case "home": session.Home(payload.ValueKind == JsonValueKind.True); break;
                 case "settings": session.Settings(); break;
-                case "note-metadata": await store.SaveMetadata(payload); await session.Changed(); result = true; break;
+                case "tray-visibility": session.OpenTrayVisibilitySettings(); break;
+                case "note-metadata": await store.SaveMetadata(payload); await session.Changed(false, payload.GetProperty("id").GetString()); result = true; break;
                 case "note-delete":
                     if (Mode != "note" || payload.GetString() != NoteId) throw new InvalidDataException("Delete a note from its own window.");
                     await Flush();
                     await store.Delete(NoteId!);
                     // Once committed, a notification failure must not masquerade as a failed deletion.
-                    try { await session.Changed(); }
+                    try { await session.Changed(preferences: false); }
                     catch (Exception ex) { session.Log.Error("delete-notification", ex, Mode); }
                     result = true;
                     // Reply before disposing this WebView. No other window is revealed or closed.
@@ -275,11 +298,11 @@ public partial class MainWindow : Window
                     break;
                 case "save":
                     if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
-                    await store.SaveNote(payload); await session.Changed(); result = true; break;
+                    await store.SaveNote(payload); await session.Changed(preferences: false); result = true; break;
                 case "preferences": result = (await store.SavePreferences(payload)).GetProperty("prefs"); await session.Changed(); break;
                 case "theme":
-                    UpdateTrayLanguage();
                     bool light = payload.GetProperty("mode").GetString() == "light";
+                    session.UpdateTrayTheme(light?"light":"dark");
                     Surface.Background = new SolidColorBrush(light ? Colors.White : Color.FromRgb(23,23,23));
                     Browser.DefaultBackgroundColor = light ? System.Drawing.Color.White : System.Drawing.Color.FromArgb(23,23,23);
                     UpdateNativeIcon();
@@ -415,7 +438,7 @@ public partial class MainWindow : Window
         if (closingPermanently) return;
         if (Icon is null)
         {
-            using var colorStream=new MemoryStream(AppIcon.RenderColor());
+            using var colorStream=new MemoryStream(AppIcon.LoadColor());
             var decoder=new IconBitmapDecoder(colorStream,BitmapCreateOptions.None,BitmapCacheOption.OnLoad);
             var largest=decoder.Frames.MaxBy(frame=>frame.PixelWidth)!;
             largest.Freeze();Icon=largest;
@@ -424,7 +447,7 @@ public partial class MainWindow : Window
         var size=System.Windows.Forms.SystemInformation.SmallIconSize;
         var key=(light?"monochrome-dark":"monochrome-light")+"-"+size.Width;
         if (key == NativeIconKey) return;
-        var bytes = AppIcon.RenderMonochrome(light);
+        var bytes = AppIcon.LoadMonochrome(light);
         using var stream = new MemoryStream(bytes);
         var next = new System.Drawing.Icon(stream,size.Width,size.Height);
         var previous = themedIcon;
@@ -432,12 +455,6 @@ public partial class MainWindow : Window
         if (tray is not null) tray.Icon = next;
         previous?.Dispose();
         NativeIconKey = key;
-    }
-    private void UpdateTrayLanguage()
-    {
-        if (tray?.ContextMenuStrip is not { } menu) return;
-        var labels = new[] { "Notes", "New note", "Quit" };
-        for (int i = 0; i < Math.Min(menu.Items.Count, labels.Length); i++) menu.Items[i].Text = labels[i];
     }
     private void LogFailure(Exception error)
     {

@@ -1,8 +1,35 @@
 # Jot workspace verification
 
-The current `dist/Jot-stack` build passed **160/160 background checks** and a Release publish with no warnings. It retains **Ctrl+Alt+J**.
+The current `dist/Jot-controls` v1.2.0 build passed **201/201 background checks** and a Release publish with no warnings. It retains **Ctrl+Alt+J**.
 
-Evidence for this release is under **test-results/stack-final/**: results.json, composed active/inactive note windows, smaller corner masks, color palettes, deletion confirmation, pinned-note light/dark states, header More menus at normal/minimum size, monochrome icon size samples, and diagnostic test logs.
+Evidence for this release is under **test-results/controls-final/**: results.json, performance.json, custom tray menus in both themes, line-height controls, circular text-color controls, first-ready light/dark frames, composed active/inactive note windows, smaller corner masks, color palettes, deletion confirmation, pinned-note light/dark states, header More menus at normal/minimum size, monochrome icon size samples, and diagnostic test logs.
+
+The new tray tests render the actual custom WPF template offscreen, check app branding and theme colors, exercise every command through its real button event, verify Settings reuses the index, create a separate note, flush notes through Quit, and check pending/error recovery. Escape dismissal and monitor-position calculations are covered, including negative coordinates and 100/150/200% sizes. Menu availability is also tested with a corrupt notes file, so a preferences read failure cannot remove Quit access. Live shell right-click/foreground activation, actual mixed-DPI monitor movement, and Windows overflow promotion were intentionally not exercised. The menu never becomes topmost and has no taskbar entry.
+
+Startup policy checks verify that normal launch reveals the index, explicit `--tray` stays quiet, and test mode never creates a real tray icon. Existing native window property checks confirm taskbar eligibility without showing production windows. Windows owns tray overflow promotion; the new visibility action is routed to `ms-settings:taskbar` only on user action and is intercepted in tests. No registry preferences or other app icons are changed.
+
+Line-height tests exercise More and Settings controls, synchronize multiple notes, verify computed spacing, persistence after reload, rejected out-of-range values, and unchanged rich HTML. Text color uses a filled circle; Clear formatting is absent. The separate upright T toolbar toggle stays unchanged. Inactive pinned notes hide Pin with all the other header buttons, and restore the whole group on hover.
+
+## Performance comparison (v1.1.1 baseline)
+
+Same-machine synthetic workloads, using the same offscreen host and benchmark routine before/after. Baseline: `test-results/perf-before/performance.json`. Final: `test-results/smooth-verified/performance.json`. These are observations under the machine's concurrent workload, not latency guarantees.
+
+The current v1.2.0 run (`controls-final/performance.json`) measured a 1.8ms median edit handler (2.9ms p95), 136.7ms median 5.12 MB save/load, and a largest native UI timer gap of 22.5ms. The earlier comparison below is retained as historical evidence of the optimization, not presented as measurements from the new build.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| 1,800-paragraph edit handler, median of 24 inputs | 25.2 ms | 2.2 ms |
+| Same edit handler, p95 | 28.3 ms | 4.0 ms |
+| 5.12 MB store save + load, median of 5 | 378.7 ms | 186.8 ms |
+| Largest native UI timer gap during those saves | 191.8 ms | 23.4 ms |
+
+Typing timings measure synchronous edit work, not full input-to-display latency. Store timings include durable flushes. The timer uses a 10ms interval; its gaps also include scheduler/GC noise. A previous optimized run measured 1.6ms edits and 146.9ms saves; the final numbers above are used rather than selecting the fastest result. No claim of uniform cold-start improvement is made: fresh WebView profiles and system load make that noisy.
+
+New regression checks cover file-cache invalidation after external corruption; failed writes retaining committed cache/index data; summaries excluding rich HTML/original images; one-note-only editor loads; autosaves not rebroadcasting preferences; unchanged saves not rewriting disk; mutation-scoped bilingual paragraph updates; IME composition with undo/redo; native notes staying transparent before readiness; and the initial resolved crimson header in both themes. Newly created warm-session notes were ready in 298ms (light) and 371ms (dark) in the final run. All windows remained offscreen, non-activating, non-topmost, and transparent during tests. Actual foreground first-paint and taskbar pin/cache interaction were not manipulated.
+
+The enlarged colored artwork fills each small ICO slot to within two pixels of its longer dimension, while the tray keeps its prior padding. Packaged color/dark/light ICOs are byte-checked against the export renderer. Runtime reads these assets rather than recomputing the raster exports.
+
+## Regression coverage
 
 New lifetime regression checks cover six image-viewer open/fit/actual-size/close cycles, replayed and queued focus callbacks after disposal, four closes during startup, undecodable images, and normal note save/hide/reopen. The original notes and shared session remain intact. The close-button test harness recognizes destruction of its DevTools target instead of waiting forever for a reply from a closed viewer. Startup awaits are cancelled per window; the shared environment is not cancelled. Closing-window errors are not hidden by a blanket dispatcher exception handler.
 
@@ -18,9 +45,9 @@ Pointer-driven host checks exercise Copy and Export without touching the real cl
 
 Menu checks require all 19 distinct colors to be visible and hit-testable at once in one ordered row, with no palette scrolling. They cover left/right-arrow navigation, Home/End, selection retention, focus, and dismissal. Native pointer checks select the last color without scrolling at minimum size, then restore the original color. At the minimum 320×250 window, only the option list scrolls; the palette remains visible, Delete stays reachable, and opening/cancelling its confirmation preserves the note. Light/dark and minimum-size captures were visually inspected.
 
-Bottom-toolbar checks verify bold/italic/underline, strikethrough, bullet/numbered lists, color, clear formatting, image insertion, and the toggle fit on a single footer row at minimum size. Strikethrough/clear-formatting actions work inline, with no More tools popup. The T glyph takes the selected text color and has no separate underline marker; the compact color picker fits above the row. Rich paste retains headings/code even though the Text-style dropdown is removed.
+Bottom-toolbar checks verify bold/italic/underline, strikethrough, bullet/numbered lists, color, image insertion, and the toggle fit on a single footer row at minimum size. There are nine centered SVGs after removing Clear formatting. Strikethrough toggles on/off directly, with no More tools popup. The filled circle takes the selected text color; the compact color picker fits above the row. Rich paste retains headings/code even though the Text-style dropdown is removed.
 
-New-note checks verify crimson header defaults with a neutral app theme; a separate CSS-before-preferences check verifies neutral startup colors in both themes. Existing selected note colors remain intact. Pinned/inactive checks verify the filled foreground pin stays visible without a solid background, and all hovered header controls remain below the 8px color strip in light/dark mode. These tests never actually enable Topmost on the desktop.
+New-note checks verify crimson header defaults with a neutral app theme; a separate CSS-before-preferences check verifies neutral startup colors in both themes. Existing selected note colors remain intact. Pinned/inactive checks verify Pin hides alongside the other controls, retains its filled glyph and transparent background, and returns on header hover. All hovered header controls remain below the 8px color strip in light/dark mode. These tests never actually enable Topmost on the desktop.
 
 Motion checks inspect real CSS transitions and Web Animations: intermediate header heights, 8px collapsed / 34px expanded states, stationary editor bounds, full-height menu reveal, inert closing controls, rapid reversal from the current frame, and cleanup. Paused start/middle/end frames are captured in more-opening-*.png and visually inspected; the new reveal is not tested merely by checking whether an Animation object exists. Toolbar and color-picker opening/closing plus reduced-motion behavior are also checked. DevTools motion emulation affects only the isolated test WebView and is reset afterward. Ordinary pointer checks wait until the target animation settles; dedicated motion checks inspect intermediate states.
 
@@ -28,7 +55,7 @@ Existing checks cover neutral global chrome with independent blue/rose note head
 
 Deletion tests cover Cancel as default focus; cancel preserving the note; recovery-path and main-store-write failures preserving live notes; disabled/pending confirmation; saving the latest draft and original image before deletion; closing only the selected window; updating the index; rejection of stale saves, reopening a deleted ID, and cross-note deletion. Synthetic archived notes remain in the isolated test output, never the user's note store.
 
-Icon checks cover eight ICO sizes from 16 to 256px and visible monochrome detail at 16, 20, 24, 32, 48, and 64px against light/dark backgrounds. Rendered small icons and native composition captures were visually inspected. In the final run, opening the offscreen test home took about 3.72 seconds and the 66,000-character write/save test took 363ms; these are local measurements, not startup or latency guarantees.
+Icon checks cover eight ICO sizes from 16 to 256px and visible monochrome detail at 16, 20, 24, 32, 48, and 64px against light/dark backgrounds. Rendered small icons, first-ready header colors, native composition captures, circular color controls, hidden inactive Pin, and tray menus were visually inspected. In the current final run, opening the offscreen test home took 2.21 seconds and the 66,000-character write/save test took 166ms; these are local measurements, not startup or latency guarantees.
 
 Existing checks cover: no shutdown/grip controls in notes; X wired to save/hide; New note aligned to the left; More covering the top of the note and constrained to small windows; transparent active Pin styling; neutral footer icons in both themes even when legacy preferences request colored icons; and taskbar eligibility for production home/note/image windows. Taskbar property checks construct but never display those windows; no live taskbar or foreground interaction is performed.
 
@@ -61,4 +88,4 @@ Visual checks used WebView2 captures and an offscreen WPF render of the actual c
 
 The harness does not manipulate the user's actual clipboard, manually drag a live desktop window, press the global hotkey, or interact with another app's paste behavior. Receiving applications determine which clipboard representations they support. Remote image downloading is guarded in code but is not tested against arbitrary external/private websites.
 
-Run instructions are in README.md. The prior live app was left untouched; the new build is in dist/Jot-stack. Real mixed-content paste into Codex and live Windows tray/taskbar visibility/theme changes were not exercised. Clipboard-lock tests inject the actual HRESULT through the production retry routine without locking or changing the user's clipboard. DataObjects, generated native icon pixels, and hidden-window lifecycle were tested offscreen.
+Run instructions are in README.md. The prior live app was left untouched; the new build is in dist/Jot-controls. Real mixed-content paste into Codex and live Windows tray/taskbar visibility/theme changes were not exercised. Clipboard-lock tests inject the actual HRESULT through the production retry routine without locking or changing the user's clipboard. DataObjects, generated native icon pixels, and hidden-window lifecycle were tested offscreen.

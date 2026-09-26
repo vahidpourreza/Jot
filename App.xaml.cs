@@ -9,6 +9,7 @@ public partial class App : System.Windows.Application
     private bool ownsInstance;
     private EventWaitHandle? activate;
     private RegisteredWaitHandle? activationListener;
+    internal static bool ShouldStartInTray(string[] args)=>args.Contains("--tray")&&!args.Contains("--self-test");
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -17,6 +18,9 @@ public partial class App : System.Windows.Application
         if(e.Args.Length==2&&e.Args[0]=="--export-icon")
         {
             File.WriteAllBytes(Path.GetFullPath(e.Args[1]),AppIcon.RenderColor());
+            var iconDirectory=Path.GetDirectoryName(Path.GetFullPath(e.Args[1]))!;
+            File.WriteAllBytes(Path.Combine(iconDirectory,"jot-tray-dark.ico"),AppIcon.RenderMonochrome(true));
+            File.WriteAllBytes(Path.Combine(iconDirectory,"jot-tray-light.ico"),AppIcon.RenderMonochrome(false));
             Shutdown();return;
         }
         bool test = e.Args.Contains("--self-test");
@@ -53,8 +57,8 @@ public partial class App : System.Windows.Application
             window.Top = -32000;
             window.Opacity = 0;
         }
-        if(test)window.Reveal();
-        else window.StartInTray();
+        if(ShouldStartInTray(e.Args))window.StartInTray();
+        else window.Reveal();
     }
 
     protected override void OnExit(System.Windows.ExitEventArgs e)

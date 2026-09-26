@@ -34,8 +34,7 @@
         <button class="icon-button" data-command="insertUnorderedList" data-icon="list" title="Bullet list" aria-label="Bullet list"></button>
         <button class="icon-button" data-command="insertOrderedList" data-icon="list-ordered" title="Numbered list" aria-label="Numbered list"></button>
       </div>
-      <button id="colorMenuButton" class="icon-button color-picker" data-icon="type" aria-label="Text color" aria-expanded="false" title="Text color"></button>
-      <button class="icon-button" data-command="removeFormat" data-icon="remove-formatting" title="Clear formatting" aria-label="Clear formatting"></button>
+      <button id="colorMenuButton" class="icon-button color-picker" data-icon="color-circle" aria-label="Text color" aria-expanded="false" title="Text color"></button>
     </div>
       <div class="footer-actions">
         <button id="formatButton" class="icon-button" data-icon="type" aria-label="Show or hide formatting tools (Ctrl+Shift+F)" title="Show / hide tools · Ctrl+Shift+F" aria-controls="formatBar" aria-expanded="false"></button>
@@ -51,6 +50,7 @@
         <button id="menuNotesButton" class="menu-item" title="Open all notes · Ctrl+K"><span data-icon="list"></span><span>All notes</span></button>
         <button id="themeButton" class="menu-item"><span data-icon="sun"></span><span id="themeLabel">Light mode</span></button>
         <div class="menu-item size-row"><span data-icon="type"></span><span class="size-label">Font size</span><button id="smallerButton" class="icon-button" aria-label="Decrease font size">−</button><output id="fontSize" title="Editor text size in pixels">16 px</output><button id="largerButton" class="icon-button" aria-label="Increase font size">+</button></div>
+        <div class="menu-item size-row"><span data-icon="line-height"></span><span class="size-label">Line height</span><button id="tighterLinesButton" class="icon-button" aria-label="Decrease line height">−</button><output id="lineHeight" title="Line height relative to text size">1.95×</output><button id="looserLinesButton" class="icon-button" aria-label="Increase line height">+</button></div>
         <div class="menu-separator" role="separator"></div>
         <button id="exportButton" class="menu-item" title="Save this note as an HTML file"><span data-icon="download"></span><span>Export</span></button>
         <button id="copyButton" class="menu-item" title="Copy all text, formatting, and images"><span data-icon="copy"></span><span>Copy</span></button>

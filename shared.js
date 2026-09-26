@@ -35,15 +35,24 @@ window.addEventListener('error',event=>JotBridge.reportError(event.error||new Er
 window.addEventListener('unhandledrejection',event=>JotBridge.reportError(event.reason,'unhandled-rejection'));
 window.JotDesign = {
   nativeThemeKey: '',
+  appliedPrefsKey: '',
   hexColor(value) {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
     const context=canvas.getContext('2d',{willReadFrequently:true});context.fillStyle=value;context.fillRect(0,0,1,1);
     return '#'+[...context.getImageData(0,0,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');
   },
-  defaults: {theme:'dark',fontSize:16,accent:'neutral',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en'},
+  defaults: {theme:'dark',fontSize:16,lineHeight:1.95,accent:'neutral',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en'},
+  lineHeights: [1.2,1.5,1.75,1.95,2.2,2.5],
+  stepLineHeight(value,step) {
+    return step>0?(this.lineHeights.find(height=>height>value+.001)??2.5):([...this.lineHeights].reverse().find(height=>height<value-.001)??1.2);
+  },
   apply(prefs) {
     const p = {...this.defaults,...prefs};
-    p.language='en';p.accent='neutral';p.coloredIcons=false;JotI18n.apply('en');
+    p.language='en';p.accent='neutral';p.coloredIcons=false;
+    p.lineHeight=Math.min(2.5,Math.max(1.2,Number(p.lineHeight)||1.95));
+    const prefsKey=JSON.stringify(p);
+    if(this.appliedPrefsKey===prefsKey&&this.nativeThemeKey)return p;
+    this.appliedPrefsKey=prefsKey;JotI18n.apply('en');
     const root = document.documentElement;
     const accent = window.JotAccents.find(item=>item.slug===p.accent) || window.JotAccents[0];
     const mode = p.theme==='light' ? 'light' : 'dark';
@@ -54,6 +63,7 @@ window.JotDesign = {
     root.style.setProperty('--ring','color-mix(in oklab, var(--primary) 68%, var(--foreground))');
     root.style.setProperty('--icon-weight',Math.min(2.6,Math.max(1.3,Number(p.iconWeight)||1.8)));
     root.style.setProperty('--editor-size',Math.min(24,Math.max(13,Number(p.fontSize)||16))+'px');
+    root.style.setProperty('--editor-line-height',p.lineHeight);
     const native={mode,background:this.hexColor(accent[mode].primary),foreground:this.hexColor(accent[mode].foreground),weight:Number(p.iconWeight)||1.8,language:JotI18n.language};
     const key=JSON.stringify(native);
     if(key!==this.nativeThemeKey){this.nativeThemeKey=key;JotBridge.request('theme',native).catch(()=>{this.nativeThemeKey='';});}
@@ -73,7 +83,9 @@ window.JotDesign = {
     element.setAttribute('fill','none'); element.setAttribute('stroke','currentColor');
     element.setAttribute('stroke-linecap','round'); element.setAttribute('stroke-linejoin','round');
     element.setAttribute('aria-hidden','true'); element.classList.add('lucide');
-    if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
+    if(name==='color-circle')element.innerHTML='<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>';
+    else if(name==='line-height')element.innerHTML='<path d="M4 4v16m-3-3 3 3 3-3M1 7l3-3 3 3M11 5h11M11 12h11M11 19h11"/>';
+    else if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
     else element.innerHTML = window.JotIconPaths[name] || window.JotIconPaths['notepad-text'];
     return element;
   },

@@ -10,7 +10,7 @@ function saveIndexView(){
   try{sessionStorage.setItem(indexViewKey,JSON.stringify({group:currentGroup,selectedId,search:$('homeSearch').value}));}catch{}
 }
 function error(e){JotBridge.reportError(e,'home');$('homeError').textContent=t(e.message);$('homeError').hidden=false;}
-function noteName(note){return note.title||note.plain.split(/\n/).find(line=>line.trim())?.trim().slice(0,90)||note.legacyTitle||t(note.html.includes('<img')?'یادداشت تصویری':'یادداشت تازه');}
+function noteName(note){return note.title||note.plain.split(/\n/).find(line=>line.trim())?.trim().slice(0,90)||note.legacyTitle||t(note.hasImage?'یادداشت تصویری':'یادداشت تازه');}
 function groupNames(){return [...new Set(homeData.notes.map(note=>note.group||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,JotI18n.locale));}
 function renderGroups(){
   $('groupFilters').replaceChildren();
@@ -34,7 +34,7 @@ function renderCards(){
     const snippet=document.createElement('p');snippet.dir='auto';snippet.textContent=note.plain.split('\n').filter(s=>s.trim()).slice(note.title?0:1).join(' ').slice(0,180)||t('برای نوشتن باز کن…');
     const text=document.createElement('span');text.className='card-text';text.append(title,snippet);
     const group=document.createElement('span');group.className='card-group';group.dir='auto';group.textContent=note.group||t('بدون گروه');
-    open.append(JotDesign.icon(note.html.includes('<img')?'image':'notepad-text'),text,group);
+    open.append(JotDesign.icon(note.hasImage?'image':'notepad-text'),text,group);
     open.onclick=()=>{selectedId=note.id;saveIndexView();renderCards();request('open-note',note.id).catch(error);};
     const foot=document.createElement('div');foot.className='card-footer';
     const time=document.createElement('small');time.textContent=new Intl.DateTimeFormat(JotI18n.locale,{month:'short',day:'numeric'}).format(note.updatedAt);
@@ -44,7 +44,7 @@ function renderCards(){
   if(!notes.length&&homeData.notes.length){const empty=document.createElement('p');empty.className='empty-list';empty.textContent=t('یادداشتی پیدا نشد.');$('cards').append(empty);}
 }
 async function refresh(){
-  const version=++refreshVersion,data=await request('load');if(version!==refreshVersion)return;
+  const version=++refreshVersion,data=await request('index-load');if(version!==refreshVersion)return;
   if(data)homeData=data;homeData.prefs=JotDesign.apply(homeData.prefs);renderGroups();renderCards();
   $('homeStatus').textContent=t('ذخیره محلی · روی همین دستگاه');
 }
@@ -92,7 +92,7 @@ document.addEventListener('keydown',event=>{
 });
 async function boot(){
   JotDesign.icons();JotDesign.drag($('homeHandle'));
-  if(!await request('load')){
+  if(!await request('index-load')){
     const legacy=JSON.parse(localStorage.getItem('vanz-notes')||'[]');
     if(!Array.isArray(legacy))throw new Error('یادداشت‌های قبلی قابل خواندن نیستند.');
     const escape=s=>{const element=document.createElement('span');element.textContent=s;return element.innerHTML;};

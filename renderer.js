@@ -15,6 +15,9 @@ const blockSelector='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,table,td,th';
 const imagePattern=/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 const allowedTags=new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','STRIKE','SPAN','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','IMG','A','FONT','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION','HR','MARK','SUB','SUP','FIGURE','FIGCAPTION']);
 const discardTags=new Set(['SCRIPT','STYLE','IFRAME','OBJECT','SVG','MATH','FORM','INPUT','BUTTON','VIDEO','AUDIO','LINK','META','TEMPLATE']);
+let directionChanges=[];
+const directionObserver=new MutationObserver(records=>directionChanges.push(...records));
+directionObserver.observe(editor,{subtree:true,childList:true,characterData:true});
 JotBridge.on(data=>{
   if(data.event==='flush'){
     saveNow().then(()=>JotBridge.send('flush-complete',data.intent)).catch(error=>{showError(error);JotBridge.send('flush-failed');});
@@ -98,13 +101,27 @@ function sanitizeHtml(html) {
   for (const node of doc.body.childNodes) container.append(clean(node));
   return container.innerHTML || EMPTY;
 }
-function normalizeDirection() {
-  editor.querySelectorAll(blockSelector).forEach((block) => {
+function normalizeDirection(full=true) {
+  const changes=directionChanges.concat(directionObserver.takeRecords());directionChanges=[];
+  const blocks=new Set();
+  if(full)editor.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
+  else for(const change of changes){
+    let node=change.target.nodeType===Node.ELEMENT_NODE?change.target:change.target.parentElement;
+    while(node&&node!==editor){if(node.matches(blockSelector+',pre,code'))blocks.add(node);node=node.parentElement;}
+    for(const added of change.addedNodes||[]){
+      if(added.nodeType!==Node.ELEMENT_NODE)continue;
+      if(added.matches(blockSelector+',pre,code'))blocks.add(added);
+      added.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
+    }
+  }
+  for(const block of blocks){
+    if(!editor.contains(block))continue;
+    if(block.matches('pre,code')){if(block.dir!=='ltr')block.dir='ltr';continue;}
     const empty=!block.textContent.replace(/[\u200b\u200c\u200d\ufeff]/g,'').trim()&&!block.querySelector('img');
-    block.dir=empty?inputDirection:'auto';
-    block.dataset.emptyBlock=String(empty);
-  });
-  editor.querySelectorAll('pre,code').forEach((block) => { block.dir = 'ltr'; });
+    const dir=empty?inputDirection:'auto';
+    if(block.dir!==dir)block.dir=dir;
+    if(block.dataset.emptyBlock!==String(empty))block.dataset.emptyBlock=String(empty);
+  }
 }
 function setInputDirection(direction) {
   inputDirection=direction==='rtl'?'rtl':'ltr';
@@ -125,13 +142,14 @@ function capture() {
 }
 function historyRecord(kind = 'command') {
   const id = model.activeId;
-  if (!histories.has(id)) histories.set(id, { values: [editor.innerHTML], index: 0, time: 0, kind: '' });
+  const html=editor.innerHTML;
+  if (!histories.has(id)) histories.set(id, { values: [html], index: 0, time: 0, kind: '' });
   const h = histories.get(id);
-  if (h.values[h.index] === editor.innerHTML) return;
+  if (h.values[h.index] === html) return;
   const merge = kind === 'typing' && h.kind === 'typing' && Date.now() - h.time < 650 && h.index > 0;
   h.values = h.values.slice(0, h.index + 1);
-  if (merge) h.values[h.index] = editor.innerHTML;
-  else { h.values.push(editor.innerHTML); h.index++; }
+  if (merge) h.values[h.index] = html;
+  else { h.values.push(html); h.index++; }
   if (h.values.length > 60) { h.values.shift(); h.index--; }
   h.time = Date.now(); h.kind = kind;
 }
@@ -143,9 +161,9 @@ function queueSave() {
 }
 function onEdit(kind = 'typing') {
   if (!ready || composing) return;
-  normalizeDirection();
+  normalizeDirection(false);
   updateEmpty();
-  capture();
+  // Capture plain text (innerText forces layout) only at the save boundary.
   historyRecord(kind);
   queueSave();
   app.classList.add('typing');
@@ -155,9 +173,11 @@ function onEdit(kind = 'typing') {
 function saveNow() {
   clearTimeout(saveTimer);
   if (!ready) return Promise.reject(new Error('یادداشت‌ها هنوز آماده نیستند.'));
+  if(revision<=savedRevision)return saveChain;
   capture();
   const current = revision;
-  const snapshot = JSON.parse(JSON.stringify(activeNote()));
+  const {id,html,plain,updatedAt}=activeNote();
+  const snapshot = {id,html,plain,updatedAt};
   saveChain = saveChain.catch(() => {}).then(async () => {
     if (current <= savedRevision) return;
     setStatus('saving', 'در حال ذخیره…');
@@ -264,6 +284,11 @@ function applyPrefs() {
   $('largerButton').disabled=model.prefs.fontSize>=24;
   $('smallerButton').title=$('smallerButton').disabled?'Minimum font size (13 px)':'Decrease font size';
   $('largerButton').title=$('largerButton').disabled?'Maximum font size (24 px)':'Increase font size';
+  $('lineHeight').textContent=model.prefs.lineHeight+'×';
+  $('tighterLinesButton').disabled=model.prefs.lineHeight<=1.2;
+  $('looserLinesButton').disabled=model.prefs.lineHeight>=2.5;
+  $('tighterLinesButton').title=$('tighterLinesButton').disabled?'Minimum line height (1.2×)':'Decrease line height';
+  $('looserLinesButton').title=$('looserLinesButton').disabled?'Maximum line height (2.5×)':'Increase line height';
   const nextMode=model.prefs.theme==='dark'?'light':'dark';
   $('themeLabel').textContent=nextMode==='light'?'Light mode':'Dark mode';
   $('themeButton').title='Switch all Jot windows to '+nextMode+' mode';
@@ -416,7 +441,7 @@ function loadIcons() {
     const button = document.createElement('button');
     button.className = 'swatch'; button.style.setProperty('--swatch', color);
     button.title = label; button.setAttribute('aria-label', label); button.dataset.color = color;
-    button.append(JotDesign.icon(color==='currentColor'?'type':'check'));
+    button.append(JotDesign.icon(color==='currentColor'?'color-circle':'check'));
     button.addEventListener('click', () => {
       command('foreColor', color === 'currentColor' ? 'inherit' : color);
       $('colorMenuButton').style.setProperty('--selected-text-color',color==='currentColor'?'var(--foreground)':color);
@@ -445,10 +470,16 @@ $('formatBar').addEventListener('pointerdown', (event) => event.preventDefault()
 document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => {command(button.dataset.command);closeFormatMenus();}));
 $('formatButton').addEventListener('pointerdown', (event) => { rememberSelection(); event.preventDefault(); });
 $('formatButton').addEventListener('click',()=>setPreference({toolbarVisible:!keepFormatOpen}));
-document.addEventListener('selectionchange',()=>{rememberSelection();refreshToolbar();});
+document.addEventListener('selectionchange',()=>{
+  rememberSelection();
+  if(selectionTimer)return;
+  selectionTimer=requestAnimationFrame(()=>{selectionTimer=0;refreshToolbar();});
+});
 $('newButton').addEventListener('click', newNote);
 $('dialogNewButton').addEventListener('click', newNote);
 $('menuNotesButton').addEventListener('click', openNotes);
+$('tighterLinesButton').addEventListener('click',()=>setPreference({lineHeight:JotDesign.stepLineHeight(model.prefs.lineHeight,-1)}));
+$('looserLinesButton').addEventListener('click',()=>setPreference({lineHeight:JotDesign.stepLineHeight(model.prefs.lineHeight,1)}));
 $('closeNotesButton').addEventListener('click', () => { $('notesDialog').close(); editor.focus(); });
 $('search').addEventListener('input', renderList);
 $('notesDialog').addEventListener('close', () => editor.focus());
@@ -592,14 +623,18 @@ async function boot() {
     button.title=button.ariaLabel=accent.slug[0].toUpperCase()+accent.slug.slice(1);button.append(JotDesign.icon('check'));
     button.onclick=()=>setNoteColor(accent.slug);$('noteColors').append(button);
   }
-  const context=await request('context');
+  const {context,model:stored}=await request('note-load');
   app.dataset.activeWindow=String(!!context.active);
   setInputDirection(context.inputDirection);
-  const stored=await request('load');
   if(!stored||!stored.notes.some(note=>note.id===context.noteId))throw new Error('یادداشت پیدا نشد.');
   model=stored;model.prefs={...JotDesign.defaults,...stored.prefs};model.activeId=context.noteId;
   selectNote(context.noteId);ready=true;editor.contentEditable='true';
   document.execCommand('defaultParagraphSeparator',false,'p');
-  applyPrefs();setStatus('saved','ذخیره شد');editor.focus();window.jotReady=true;
+  applyPrefs();setStatus('saved','ذخیره شد');savedRevision=revision;editor.focus();window.jotReady=true;
+  // Resolve the real header color with initial transitions disabled before
+  // revealing the native window. No neutral/white intermediate frame is visible.
+  window.jotInitialHeader=getComputedStyle($('handle'),'::before').backgroundColor;
+  JotBridge.send('editor-ready');
+  requestAnimationFrame(()=>{app.dataset.paintReady='true';});
 }
-boot().catch(showError);
+boot().catch(error=>{showError(error);JotBridge.send('editor-failed');});

@@ -120,10 +120,11 @@ public partial class MainWindow
         {
             await WaitFor("window.jotReady===true");
             checks.Add(new{name="home-ready",passed=true,elapsedMs=startup.ElapsedMilliseconds});
+            checks.Add(new{name="normal-launch-opens-index-explicit-tray-flag-stays-quiet",passed=!App.ShouldStartInTray([])&&App.ShouldStartInTray(["--tray"])&&!App.ShouldStartInTray(["--tray","--self-test"])});
             CaptureCornerMask(checks);
             var dormant=new MainWindow(session,"home");
             dormant.StartInTray();
-            checks.Add(new{name="tray-start-does-not-open-window-or-webview",passed=!dormant.IsVisible&&!dormant.ShowInTaskbar&&dormant.Browser.CoreWebView2 is null});
+            checks.Add(new{name="explicit-tray-start-does-not-open-window-or-webview",passed=!dormant.IsVisible&&!dormant.ShowInTaskbar&&dormant.Browser.CoreWebView2 is null});
             dormant.ClosePermanently();
             var desktopProbeSession=new JotSession(false,testOutput);
             foreach(var mode in new[]{"home","note","image"})
@@ -137,6 +138,7 @@ public partial class MainWindow
             var a=session.Windows.First(w=>w.Mode=="note");
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
+            await VerifyPerformance(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});
             await a.Script("setInputDirection('rtl')");
             await a.Capture("empty-persian");
@@ -244,7 +246,7 @@ public partial class MainWindow
             await a.Capture("small-header-menu");
             await a.Script("closePanels()");await Task.Delay(180);
             checks.Add(new{name="bottom-toolbar-fits-minimum-window-in-one-row",passed=await a.Script("(()=>{const f=document.querySelector('.quiet-footer').getBoundingClientRect();return [...document.querySelectorAll('.quiet-footer button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=f.top&&r.bottom<=f.bottom;});})()")=="true"});
-            checks.Add(new{name="footer-svg-centers-align-at-minimum-window-size",passed=await a.Script("(()=>{const icons=[...document.querySelectorAll('.quiet-footer button>svg')].map(svg=>svg.getBoundingClientRect());return icons.length===10&&icons.every(r=>r.width===16&&r.height===16)&&Math.max(...icons.map(r=>r.y+r.height/2))-Math.min(...icons.map(r=>r.y+r.height/2))<.1;})()")=="true"});
+            checks.Add(new{name="footer-svg-centers-align-at-minimum-window-size",passed=await a.Script("(()=>{const icons=[...document.querySelectorAll('.quiet-footer button>svg')].map(svg=>svg.getBoundingClientRect());return icons.length===9&&icons.every(r=>r.width===16&&r.height===16)&&Math.max(...icons.map(r=>r.y+r.height/2))-Math.min(...icons.map(r=>r.y+r.height/2))<.1;})()")=="true"});
             await a.Capture("aligned-toolbar-minimum");
             await a.Script("document.getElementById('menuButton').click()");
             await a.WaitFor("noteMenuAnimation===null");
@@ -318,6 +320,8 @@ public partial class MainWindow
             }
             await VerifyErrorHandling(checks);
             await VerifyPersonalization(checks,a,b);
+            await VerifyReadyPaint(checks,a);
+            await VerifyTrayAndLineHeight(checks,a,b);
             var isolated = new NoteStore(Path.Combine(testOutput,"corrupt-store-check"));
             Directory.CreateDirectory(isolated.Root);
             await File.WriteAllTextAsync(isolated.FilePath,"sentinel-broken-json");

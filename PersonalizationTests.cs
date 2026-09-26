@@ -80,7 +80,7 @@ public partial class MainWindow
         using var dark=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(24,24,24));graphics.FillRectangle(dark,0,145,410,125);graphics.FillRectangle(dark,0,400,410,125);
         using var font=new System.Drawing.Font("Segoe UI",10);
         graphics.DrawString("Jot · selected B / native icon exports",font,System.Drawing.Brushes.Black,12,6);
-        bool colorVisible=true,transparent=true;
+        bool colorVisible=true,transparent=true,fullSlot=true;
         foreach(bool light in new[]{true,false})
         {
             using var stream=new MemoryStream(AppIcon.RenderColor());
@@ -88,9 +88,10 @@ public partial class MainWindow
             foreach(int size in new[]{16,20,24,32,48,64})
             {
                 using var icon=new System.Drawing.Icon(stream,size,size);using var bitmap=icon.ToBitmap();
-                int colored=0;
-                for(int row=0;row<bitmap.Height;row++)for(int col=0;col<bitmap.Width;col++){var p=bitmap.GetPixel(col,row);if(p.A>200&&Math.Max(p.R,Math.Max(p.G,p.B))-Math.Min(p.R,Math.Min(p.G,p.B))>40)colored++;}
+                int colored=0,left=size,right=0,top=size,bottom=0;
+                for(int row=0;row<bitmap.Height;row++)for(int col=0;col<bitmap.Width;col++){var p=bitmap.GetPixel(col,row);if(p.A>200){left=Math.Min(left,col);right=Math.Max(right,col);top=Math.Min(top,row);bottom=Math.Max(bottom,row);if(Math.Max(p.R,Math.Max(p.G,p.B))-Math.Min(p.R,Math.Min(p.G,p.B))>40)colored++;}}
                 colorVisible &= colored>size*size/4;
+                fullSlot &= Math.Max(right-left+1,bottom-top+1)>=size-2;
                 transparent &= bitmap.GetPixel(0,0).A==0&&bitmap.GetPixel(size-1,size-1).A==0;
                 graphics.DrawImageUnscaled(bitmap,x,y);graphics.DrawString(size.ToString(),font,light?System.Drawing.Brushes.Black:System.Drawing.Brushes.White,x,y+68);x+=size+20;stream.Position=0;
             }
@@ -102,7 +103,7 @@ public partial class MainWindow
         using(var bitmap=large.ToBitmap())graphics.DrawImageUnscaled(bitmap,480,40);
         graphics.DrawString("B · folded stack",font,System.Drawing.Brushes.Black,445,190);
         graphics.DrawString("128 px packaged icon",font,System.Drawing.Brushes.Black,445,212);
-        graphics.DrawString("6% margin (min. 1 px)",font,System.Drawing.Brushes.Black,445,234);
+        graphics.DrawString("Tighter taskbar crop",font,System.Drawing.Brushes.Black,445,234);
         graphics.DrawString("Color app / taskbar",font,System.Drawing.Brushes.Black,445,270);
         graphics.DrawString("One tray alpha master",font,System.Drawing.Brushes.Black,445,300);
         graphics.DrawString("Dark / light adaptive ink",font,System.Drawing.Brushes.Black,445,322);
@@ -125,6 +126,7 @@ public partial class MainWindow
         board.Save(Path.Combine(testOutput,"icon-sizes-light-dark.png"));
         checks.Add(new{name="custom-monochrome-icon-legible-at-small-sizes",passed=allVisible});
         checks.Add(new{name="colored-app-icon-visible-in-all-small-sizes",passed=colorVisible&&transparent});
+        checks.Add(new{name="taskbar-artwork-fills-icon-slot",passed=fullSlot});
         checks.Add(new{name="native-window-uses-high-resolution-colored-icon",passed=Icon is System.Windows.Media.Imaging.BitmapSource source&&source.PixelWidth>=128});
         using(var darkStream=new MemoryStream(AppIcon.RenderMonochrome(true)))
         using(var lightStream=new MemoryStream(AppIcon.RenderMonochrome(false)))
@@ -136,6 +138,7 @@ public partial class MainWindow
             bool sameAlpha=true;for(int y=0;y<32;y++)for(int x=0;x<32;x++)sameAlpha&=darkBitmap.GetPixel(x,y).A==lightBitmap.GetPixel(x,y).A;
             checks.Add(new{name="light-dark-tray-shape-is-identical",passed=sameAlpha});
         }
+        checks.Add(new{name="packaged-icons-match-generated-assets",passed=AppIcon.LoadColor().SequenceEqual(AppIcon.RenderColor())&&AppIcon.LoadMonochrome(true).SequenceEqual(AppIcon.RenderMonochrome(true))&&AppIcon.LoadMonochrome(false).SequenceEqual(AppIcon.RenderMonochrome(false))});
         using var reader=new BinaryReader(File.OpenRead(Path.Combine(AppContext.BaseDirectory,"assets","jot.ico")));
         reader.ReadUInt16();reader.ReadUInt16();var count=reader.ReadUInt16();var sizes=new List<int>();
         for(int i=0;i<count;i++){var size=reader.ReadByte();sizes.Add(size==0?256:size);reader.ReadBytes(15);}

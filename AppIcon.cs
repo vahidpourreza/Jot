@@ -13,6 +13,9 @@ internal static class AppIcon
     private static readonly Lazy<byte[]> Colored = new(() => Render("jot-color.png", null));
     private static readonly Lazy<byte[]> Dark = new(() => Render("jot-tray-mask.png", Color.FromArgb(30,30,30)));
     private static readonly Lazy<byte[]> Light = new(() => Render("jot-tray-mask.png", Color.FromArgb(245,245,245)));
+    private static readonly Lazy<byte[]> PackagedColor = new(() => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"assets","jot.ico")));
+    private static readonly Lazy<byte[]> PackagedDark = new(() => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"assets","jot-tray-dark.ico")));
+    private static readonly Lazy<byte[]> PackagedLight = new(() => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"assets","jot-tray-light.ico")));
     internal static bool WindowsUsesLightTray()
     {
         try
@@ -24,6 +27,8 @@ internal static class AppIcon
     }
     internal static byte[] RenderColor() => Colored.Value;
     internal static byte[] RenderMonochrome(bool lightBackground) => lightBackground ? Dark.Value : Light.Value;
+    internal static byte[] LoadColor() => PackagedColor.Value;
+    internal static byte[] LoadMonochrome(bool lightBackground) => lightBackground ? PackagedDark.Value : PackagedLight.Value;
     private static Rectangle ContentBounds(Bitmap bitmap)
     {
         var pixels=bitmap.LockBits(new Rectangle(0,0,bitmap.Width,bitmap.Height),ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
@@ -66,7 +71,9 @@ internal static class AppIcon
             graphics.PixelOffsetMode=PixelOffsetMode.HighQuality;
             graphics.CompositingQuality=CompositingQuality.HighQuality;
             graphics.CompositingMode=CompositingMode.SourceCopy;
-            int padding=Math.Max(1,(int)Math.Round(size*.06));
+            // The colored taskbar mark uses more of its slot; the tray retains
+            // its existing breathing room and identical light/dark geometry.
+            int padding=ink is null ? Math.Max(0,(int)Math.Round(size*.015)) : Math.Max(1,(int)Math.Round(size*.06));
             double scale=(size-2.0*padding)/Math.Max(bounds.Width,bounds.Height);
             int width=Math.Max(1,(int)Math.Round(bounds.Width*scale)),height=Math.Max(1,(int)Math.Round(bounds.Height*scale));
             var target=new Rectangle((size-width)/2,(size-height)/2,width,height);

@@ -22,7 +22,7 @@ public partial class MainWindow
                 await note.Script("app.dataset.activeWindow='false';editor.focus()");
                 await note.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseMoved\",\"x\":100,\"y\":100}");
                 await Task.Delay(200);
-                checks.Add(new{name="inactive-pinned-indicator-visible-"+theme,passed=await note.Script("(()=>{const p=document.getElementById('pinButton');return getComputedStyle(p).opacity==='1'&&getComputedStyle(p.parentElement).opacity==='1'&&!!p.querySelector('[fill=currentColor]')&&getComputedStyle(p).color===getComputedStyle(document.documentElement).color&&getComputedStyle(p).backgroundColor==='rgba(0, 0, 0, 0)';})()")=="true"&&!note.Topmost});
+                checks.Add(new{name="inactive-pin-hides-with-other-header-icons-"+theme,passed=await note.Script("(()=>{const p=document.getElementById('pinButton');return [...document.querySelectorAll('#handle button')].every(button=>getComputedStyle(button).opacity==='0')&&!!p.querySelector('[fill=currentColor]')&&getComputedStyle(p).backgroundColor==='rgba(0, 0, 0, 0)';})()")=="true"&&!note.Topmost});
                 await note.Capture("pinned-inactive-"+theme);
                 using var point=JsonDocument.Parse(await note.Script("(()=>{const r=document.getElementById('menuButton').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
                 await note.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",JsonSerializer.Serialize(new{type="mouseMoved",x=point.RootElement.GetProperty("x").GetDouble(),y=point.RootElement.GetProperty("y").GetDouble()}));

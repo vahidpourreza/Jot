@@ -144,11 +144,35 @@
     await sleep(190);
     assert($('colorMenu').getBoundingClientRect().bottom<$('colorMenuButton').getBoundingClientRect().top,'color picker did not open upward');
     assert(!$('formatMoreButton')&&!$('formatMoreMenu'),'extra tools are still hidden in a menu');
-    assert(document.querySelector('[data-command=strikeThrough]').closest('#formatBar')&&document.querySelector('[data-command=removeFormat]').closest('#formatBar'),'extra tools missing from row');
-    assert(!$('selectedColor')&&!$('colorMenuButton').querySelector('i'),'T still has an underline indicator');
+    assert(document.querySelector('[data-command=strikeThrough]').closest('#formatBar')&&!document.querySelector('[data-command=removeFormat]'),'strikethrough missing or Clear formatting remains');
+    assert($('colorMenuButton').dataset.icon==='color-circle'&&$('colorMenuButton').querySelector('circle[fill=currentColor]')&&!$('colorMenuButton').querySelector('path,i'),'text color must be a filled circle, not T');
     closeFormatMenus();
   });
   await test('mixed-paragraph-directions',()=>{write('<p>English starts here فارسی</p><p>سلام English ۱۲۳</p>');const blocks=editor.querySelectorAll('p');assert(getComputedStyle(blocks[0]).direction==='ltr','LTR');assert(getComputedStyle(blocks[1]).direction==='rtl','RTL');});
+  await test('incremental-bidi-keeps-untouched-paragraphs-and-code',()=>{
+    write('<p>Unchanged paragraph</p><p>English</p><pre><code>code</code></pre>');
+    const first=editor.firstElementChild,second=first.nextElementSibling;
+    const observed=new MutationObserver(()=>{});observed.observe(first,{attributes:true,subtree:true});
+    second.firstChild.data='سلام English';onEdit();
+    assert(getComputedStyle(second).direction==='rtl','edited paragraph direction');
+    assert(observed.takeRecords().length===0,'typing rewrote an unrelated paragraph');observed.disconnect();
+    setInputDirection('ltr');second.replaceChildren(document.createElement('br'));onEdit();
+    assert(second.dir==='ltr'&&second.dataset.emptyBlock==='true','emptied paragraph caret');
+    editor.querySelector('code').firstChild.data='سلام code';onEdit();
+    assert(editor.querySelector('pre').dir==='ltr'&&editor.querySelector('code').dir==='ltr','code lost LTR');
+  });
+  await test('composition-defers-work-and-records-complete-text',async()=>{
+    write('<p>Before IME</p>');histories.get(model.activeId).kind='command';const before=revision;
+    editor.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    editor.firstElementChild.textContent='فارسی during composition';
+    editor.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));
+    assert(revision===before,'saved incomplete IME composition');
+    editor.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
+    assert(revision===before+1&&getComputedStyle(editor.firstElementChild).direction==='rtl','composition not normalized');
+    await saveNow();assert(activeNote().plain.includes('فارسی'),'composition missing in saved content');
+    undo();assert(editor.textContent.includes('Before IME'),'composition undo lost prior state');
+    undo(true);assert(editor.textContent.includes('فارسی'),'composition redo lost composed text');
+  });
   await test('formatting-controls-share-one-bottom-row',()=>{
     const footer=document.querySelector('.quiet-footer').getBoundingClientRect();
     assert($('formatBar').closest('.quiet-footer')&&$('writingArea').getBoundingClientRect().bottom<=footer.top,'toolbar is not below the editor');
@@ -173,7 +197,7 @@
     await setPreference({theme:previousTheme});
   });
   await test('format-bold-italic-underline-color',async()=>{write('<p>Selected words</p>');select('Selected');for(const command of ['bold','italic','underline'])document.querySelector('[data-command="'+command+'"]').click();document.querySelector('[data-color="#60a5fa"]').click();assert(/font-weight: (bold|700)|<b>/.test(editor.innerHTML),'bold');assert(editor.innerHTML.includes('italic'),'italic');assert(editor.innerHTML.includes('underline'),'underline');assert(editor.innerHTML.includes('96, 165, 250'),'color');await sleep(160);assert(JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color)==='#60a5fa','T glyph does not show selected text color');});
-  await test('inline-strikethrough-and-clear-formatting-work',()=>{write('<p>More tools inline</p>');select('tools');document.querySelector('[data-command=strikeThrough]').click();assert(/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough failed');document.querySelector('[data-command=removeFormat]').click();assert(!/line-through|<strike>|<s>/.test(editor.innerHTML),'clear formatting failed');});
+  await test('inline-strikethrough-toggles-without-clear-formatting',()=>{write('<p>More tools inline</p>');select('tools');const button=document.querySelector('[data-command=strikeThrough]');button.click();assert(/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough failed');button.click();assert(!/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough did not toggle off');assert(!document.querySelector('[data-command=removeFormat]'),'Clear formatting remains');});
   await test('neutral-css-before-preferences-load',()=>{
     const root=document.documentElement,original=root.style.cssText,theme=root.dataset.theme;
     try{root.style.removeProperty('--primary');for(const mode of ['dark','light']){root.dataset.theme=mode;const hex=JotDesign.hexColor(getComputedStyle(root).getPropertyValue('--primary'));assert(hex.slice(1,3)===hex.slice(3,5)&&hex.slice(3,5)===hex.slice(5,7),'startup accent is not neutral');}}

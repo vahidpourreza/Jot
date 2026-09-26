@@ -13,6 +13,39 @@ internal sealed class JotSession(bool testing, string output)
     public List<MainWindow> Windows { get; } = [];
     private Task<CoreWebView2Environment>? environment;
     private bool quitting;
+    internal TrayMenuWindow? TrayMenu { get; private set; }
+    internal readonly List<string> TestTrayActions=[];
+    internal async Task ShowTrayMenu(System.Drawing.Point anchor)
+    {
+        if(quitting)return;
+        JsonElement? data=null;
+        try{data=await Store.Load();}
+        catch(Exception error){Log.Error("tray-theme",error);}
+        if(quitting)return;
+        TrayMenu??=new TrayMenuWindow(Testing,ExecuteTrayAction,Log);
+        var prefs=data?.GetProperty("prefs");
+        TrayMenu.ApplyTheme(prefs is { } p&&p.TryGetProperty("theme",out var theme)?theme.GetString()??"dark":"dark");
+        TrayMenu.OpenAt(anchor);
+    }
+    internal void UpdateTrayTheme(string theme)=>TrayMenu?.ApplyTheme(theme);
+    internal void OpenTrayVisibilitySettings()
+    {
+        if(Testing){TestTrayActions.Add("tray-visibility");return;}
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:taskbar"){UseShellExecute=true});
+    }
+    internal async Task ExecuteTrayAction(string action)
+    {
+        if(Testing&&action!="tray-visibility")TestTrayActions.Add(action);
+        switch(action)
+        {
+            case "home":Home();break;
+            case "new-note":await NewNote();break;
+            case "settings":Settings();break;
+            case "tray-visibility":OpenTrayVisibilitySettings();break;
+            case "quit":if(Testing)await FlushNotes();else await Quit();break;
+            default:throw new InvalidOperationException("Unknown tray action.");
+        }
+    }
     public Task<CoreWebView2Environment> EnvironmentAsync()
     {
         if (environment is not null) return environment;
@@ -44,7 +77,7 @@ internal sealed class JotSession(bool testing, string output)
     public async Task<MainWindow> NewNote()
     {
         var id = await Store.Create();
-        await Changed();
+        await Changed(preferences: false);
         return OpenNote(id);
     }
     public MainWindow OpenNote(string id)
@@ -59,15 +92,15 @@ internal sealed class JotSession(bool testing, string output)
         window.Reveal();
         return window;
     }
-    public async Task Changed()
+    public async Task Changed(bool preferences = true, string? noteId = null)
     {
-        var data = await Store.Load();
+        var data = preferences || noteId is not null ? await Store.Load() : null;
         foreach (var window in Windows.ToArray())
         {
             if (data is not null)
             {
-                window.Post(new { @event = "preferences", prefs = data.Value.GetProperty("prefs") });
-                if (window.Mode == "note")
+                if (preferences) window.Post(new { @event = "preferences", prefs = data.Value.GetProperty("prefs") });
+                if (window.Mode == "note" && (preferences || window.NoteId == noteId))
                 {
                     var note = data.Value.GetProperty("notes").EnumerateArray().FirstOrDefault(n => n.GetProperty("id").GetString() == window.NoteId);
                     if (note.ValueKind == JsonValueKind.Object)
@@ -88,6 +121,7 @@ internal sealed class JotSession(bool testing, string output)
         try
         {
             await FlushNotes();
+            TrayMenu?.Close();TrayMenu=null;
             foreach (var window in Windows.ToArray()) window.ClosePermanently();
             System.Windows.Application.Current.Shutdown();
         }

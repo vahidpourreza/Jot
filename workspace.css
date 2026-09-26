@@ -57,6 +57,7 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .app .window-actions,.app .footer-actions{opacity:.7}.app .app-button{padding:4px}.app-button .jot-logo{width:22px;height:22px;border-radius:6px}.app-button .jot-logo svg{width:15px;height:15px}
 .editor img{max-width:72px!important;max-height:48px!important;width:auto!important;height:auto!important;object-fit:contain;cursor:zoom-in;border:1px solid var(--border);margin:2px 4px;border-radius:5px;vertical-align:middle;box-shadow:0 1px 3px #0001}
 .editor [data-empty-block=true]{unicode-bidi:isolate}
+.editor{line-height:var(--editor-line-height,1.95)}
 .editor table{border-collapse:collapse;max-width:100%;font-size:.9em;margin-block:10px}.editor th,.editor td{border:1px solid var(--border);padding:6px 9px;min-width:45px;vertical-align:top}.editor th{background:var(--muted);font-weight:700}.editor mark{background:#fbbf2455;color:inherit}.editor figure{margin:8px 0}
 .editor h1{font-size:1.55em}.editor h3{font-size:1.2em}.editor h4,.editor h5,.editor h6{font-size:1em}.editor :is(h1,h3,h4,h5,h6){font-weight:700;line-height:1.7;unicode-bidi:plaintext;text-align:start}
 .image-app{height:100%;display:flex;flex-direction:column}.image-handle{height:42px;display:flex;align-items:center;gap:8px;padding:0 12px;user-select:none}.image-handle>span{font-size:12px;color:var(--muted-foreground)}.image-handle .spacer{flex:1}.image-stage{flex:1;min-height:0;overflow:auto;padding:16px;display:grid;place-items:center;background:repeating-conic-gradient(var(--muted) 0% 25%,var(--background) 0% 50%) 50% / 20px 20px}.image-stage img{display:block;object-fit:contain;max-width:100%;max-height:100%}.image-stage[data-fit=false]{display:block}.image-stage[data-fit=false] img{max-width:none;max-height:none;margin:auto}.image-footer{text-align:center;padding:8px;font-size:11px;color:var(--muted-foreground)}
@@ -67,6 +68,7 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .app .editor,.app .writing-area{background:var(--background)}
 .app .handle{height:34px;background:var(--background);color:var(--note-accent-foreground,var(--primary-foreground));border:0;isolation:isolate}
 .app .handle::before{content:'';position:absolute;inset:0 0 auto;height:100%;background:var(--note-accent,var(--primary));z-index:-1;pointer-events:none;transition:height 160ms ease-out,background-color 160ms ease-out}
+.app:not([data-paint-ready=true]) .handle::before{transition:none}
 .app .handle .icon-button{height:26px;color:var(--note-accent-foreground,var(--primary-foreground));transition:opacity 140ms,color 100ms,background 100ms,transform 160ms}
 .app .handle .icon-button:hover{background:color-mix(in srgb,var(--note-accent-foreground,var(--primary-foreground)) 14%,transparent)}
 .app .handle .jot-logo{background:transparent;color:inherit}
@@ -100,7 +102,6 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .app[data-active-window=false] .handle::before{height:8px}
 .app[data-active-window=false] .handle .window-actions{opacity:1}
 .app[data-active-window=false] .handle .icon-button{color:var(--muted-foreground);opacity:0;transform:translateY(4px)}
-.app[data-active-window=false] .handle #pinButton[aria-pressed=true]{opacity:1;color:var(--foreground)}
 .app[data-active-window=false] .handle .icon-button:hover{background:var(--muted);color:var(--foreground)}
 .app[data-active-window=false] .handle:hover .icon-button,.app[data-active-window=false] .handle:focus-within .icon-button{opacity:1}
 .note-color-grid{display:grid;grid-template-columns:repeat(var(--note-color-count,19),minmax(0,1fr));width:100%;flex-shrink:0}
