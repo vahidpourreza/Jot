@@ -3,6 +3,7 @@ obj/
 dist/
 node_modules/
 test-results/
+recovery/
 *.WebView2/
 logs/
 data/

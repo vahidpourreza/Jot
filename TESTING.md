@@ -1,5 +1,9 @@
 # Jot workspace verification
 
+Generated test artifacts were cleaned after the project directory was renamed to `D:\Platform\Jot`. The latest `test-results/context-final` reports and screenshots remain; its temporary profiles/data and older generated runs were moved to the Windows Recycle Bin. Historical artifact paths below describe prior runs and may no longer exist locally. Test source code is unchanged.
+
+Obsolete releases and rebuildable `bin`, `obj`, and unused Electron dependencies were also cleaned, retaining `dist/Jot-context`. Legacy browser profiles discovered in `bin` were first archived under the ignored `recovery` directory and every archived file was hash-verified. Cleanup preserved source/tests, the current release, latest reports, and current notes byte-for-byte; it did not rerun the app or test suite.
+
 The current `dist/Jot-context` v1.4.0 build passed **341/341 offscreen checks** and a Release publish with no warnings. Evidence: **test-results/context-final/results.json** and its sibling PNG captures. JavaScript syntax checks and `git diff --check` passed. The running user app, user notes, real clipboard, foreground, tray, and taskbar settings were not changed.
 
 New checks cover a real WebView right-click opening the custom note menu; retained text/backward selections; keyboard opening/navigation/dismissal; compact-window scrolling; separate menu/note surfaces in both themes; Undo/Redo, Copy, Cut and plain-text Paste; original-resolution image Copy, Open and undoable Remove; mixed text/image paste order and thumbnail size; empty paste; UTF-8 CF_HTML decoding and malformed-HTML fallback. Failed/superseded copying, edits, IME composition, or Escape during a pending Cut never remove the selection. Slow image paste cannot overwrite new typing. Native clipboard access is replaced with in-memory fixtures during these checks.
