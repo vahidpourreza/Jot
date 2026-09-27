@@ -170,7 +170,7 @@ public partial class MainWindow : Window
     private void RoundWindow()
     {
         if (closingPermanently || Browser is null || ActualWidth < 20 || ActualHeight < 20) return;
-        if(IsImageFullscreen){Browser.Clip=null;return;}
+        if(IsWindowFullscreen||IsFullscreenTransitioning){Browser.Clip=null;return;}
         Browser.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth-18), Math.Max(0, ActualHeight-18)), 5, 5);
     }
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RoundWindow();
@@ -302,7 +302,7 @@ public partial class MainWindow : Window
                 case "note-load":
                     if (Mode != "note") throw new InvalidOperationException("Only a note window can load its editor.");
                     var ownNote = await store.LoadNote(NoteId!) ?? throw new InvalidDataException("Note not found.");
-                    result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing },
+                    result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing, fullscreen = IsNoteFullscreen },
                         model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = await store.LoadPreferences() } };
                     break;
                 case "editor-ready": editorReadyCompletion.TrySetResult(true);RevealReadyContent(); break;
@@ -355,9 +355,11 @@ public partial class MainWindow : Window
                     if (!testing) Topmost = payload.GetBoolean();
                     result = payload.GetBoolean(); break;
                 case "drag":
-                    if (!testing&&!IsImageFullscreen) { ReleaseCapture(); SendMessage(source!.Handle, 0x00A1, 2, 0); }
+                    await DragHeader(payload);
                     break;
-                case "image-fullscreen": result=SetImageFullscreen(payload.GetBoolean());break;
+                case "image-fullscreen": result=await SetImageFullscreen(payload.GetBoolean());break;
+                case "note-fullscreen":
+                    result=await SetNoteFullscreen(payload.ValueKind==JsonValueKind.Object?payload.GetProperty("enabled").GetBoolean():payload.GetBoolean());break;
                 case "hide":
                     if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
                     else await HideAfterSaving();
@@ -440,7 +442,7 @@ public partial class MainWindow : Window
             handled=true;session.RequestSystemQuit();return 0;
         }
         if (msg == 0x0051) _ = Dispatcher.BeginInvoke(NotifyInputLanguage);
-        if (msg == 0x0084&&!IsImageFullscreen)
+        if (msg == 0x0084&&!IsWindowFullscreen&&!IsFullscreenTransitioning)
         {
             int packed = unchecked((int)lParam);
             var point = PointFromScreen(new Point((short)(packed & 0xffff), (short)(packed >> 16)));

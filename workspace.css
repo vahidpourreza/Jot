@@ -81,6 +81,15 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .editor-menu button:hover:not(:disabled),.editor-menu button:focus-visible{background:var(--menu-hover);outline:none}.editor-menu button:disabled{opacity:.4;cursor:default}.editor-menu button.pending{opacity:1}.editor-menu button[data-action=remove-image]{color:var(--destructive,#f87171)}
 .editor-menu button svg{width:15px;height:15px;flex:none}.editor-menu button span{flex:1}.editor-menu kbd{border:0;background:none;padding:0;color:var(--muted-foreground);font:inherit;font-size:11px}
 .editor-menu [role=separator]{height:1px;background:var(--menu-line);margin:4px 5px}.editor-menu .pending svg{display:none}.editor-menu .pending:before{content:'';width:13px;height:13px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:context-spin .7s linear infinite}@keyframes context-spin{to{transform:rotate(360deg)}}
+.editor-menu .context-direction{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;padding:5px 9px;font-size:12px;line-height:16px}
+.editor-menu .context-direction>span{display:flex;align-items:center;height:28px;line-height:16px}
+.context-direction-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:2px}
+.editor-menu .context-direction button{display:grid;place-items:center;width:100%;min-width:0;height:28px;min-height:28px;padding:0 5px;font-size:12px;line-height:16px;text-align:center;border:1px solid transparent;border-radius:4px}
+.editor-menu .context-direction button span{flex:none;line-height:16px;text-align:center}
+.editor-menu .context-direction button[aria-checked=true]{background:color-mix(in srgb,var(--foreground) 9%,transparent);border-color:transparent;box-shadow:none;color:var(--foreground);font-weight:600}
+.app #menu .direction-choices button{display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:28px;padding:0 6px;line-height:16px;text-align:center}
+.app #menu .direction-choices button[aria-pressed=true]{background:color-mix(in srgb,var(--foreground) 9%,transparent);border-color:transparent;box-shadow:none;color:var(--foreground);font-weight:600}
+#fullscreenButton[aria-busy=true] svg{display:none}#fullscreenButton[aria-busy=true]::before{content:'';width:12px;height:12px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
 .image-app{position:relative;height:100%;display:flex;flex-direction:column;min-width:0}.image-handle{height:42px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;user-select:none}.image-handle>span{font-size:12px;color:var(--muted-foreground)}.image-handle .spacer{flex:1}
 .image-tools{display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 8px;background:var(--menu-surface);border-block:1px solid var(--border);flex:none}.image-tools output{min-width:48px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}.image-tools .text-button{font-size:12px;min-height:28px;padding:0 9px}.image-tools [aria-pressed=true]{background:var(--menu-hover)}
 #imageCopy[aria-busy=true] svg{display:none}#imageCopy[aria-busy=true]:before{content:'';width:14px;height:14px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:context-spin .7s linear infinite}
@@ -109,6 +118,7 @@ svg.lucide{width:16px;height:16px;stroke-width:var(--icon-weight,1.8);flex-shrin
 .app .footer-actions .icon-button:hover,.app .footer-actions .icon-button[aria-expanded=true]{color:var(--foreground);background:var(--muted)}
 .app .handle #pinButton{position:relative}
 .app .handle #pinButton[aria-pressed=true]{background:transparent;border-color:transparent;box-shadow:none}
+.app .handle #fullscreenButton[aria-pressed=true]{background:transparent;border-color:transparent;box-shadow:none}
 
 
 .app .handle #menuButton[aria-expanded=true]{background:color-mix(in srgb,var(--note-accent-foreground,var(--primary-foreground)) 14%,transparent)}

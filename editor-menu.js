@@ -27,6 +27,18 @@ window.JotEditorMenu=(()=>{
     b.append(JotDesign.icon(icon),text,key);b.onclick=()=>run(action);menu.append(b);
   }
   function separator(){const line=document.createElement('div');line.role='separator';menu.append(line);}
+  function directions(){
+    const row=document.createElement('div');row.className='context-direction';
+    const label=document.createElement('span');label.textContent='Direction';row.append(label);
+    const choices=document.createElement('div');choices.className='context-direction-buttons';choices.role='group';choices.ariaLabel='Current or selected paragraph direction';
+    const blocks=selectedDirectionBlocks(),modes=new Set(blocks.map(block=>block.dataset.jotDirection||'auto'));
+    for(const [mode,text,title] of [['auto','Auto','Automatic paragraph direction'],['ltr','LTR','Left-to-right paragraphs'],['rtl','RTL','Right-to-left paragraphs']]){
+      const button=document.createElement('button');button.type='button';button.role='menuitemradio';button.tabIndex=-1;button.dataset.action='direction-'+mode;
+      button.title=button.ariaLabel=title;button.ariaChecked=String(modes.size===1&&modes.has(mode));button.disabled=!blocks.length;
+      const caption=document.createElement('span');caption.textContent=text;button.append(caption);button.onclick=()=>run('direction-'+mode);choices.append(button);
+    }
+    row.append(choices);menu.append(row);
+  }
   function open(x,y,target,keyboard=false){
     if(busy||!ready||composing||deleting)return;
     window.JotMenus?.close();closePanels();flushTypingHistory();const image=target?.closest?.('img');
@@ -41,7 +53,8 @@ window.JotEditorMenu=(()=>{
     const h=histories.get(model.activeId),selected=!context.selection.range.collapsed;menu.replaceChildren();
     if(context.image){add('open-image','Open image','scan');add('copy-image','Copy image','copy');add('remove-image','Remove image','trash-2');separator();}
     add('undo','Undo','undo-2','Ctrl+Z',!h||h.index===0);add('redo','Redo','redo-2','Ctrl+Y',!h||h.index>=h.values.length-1);separator();
-    add('cut','Cut','scissors','Ctrl+X',!selected);add('copy','Copy','copy','Ctrl+C',!selected);add('paste','Paste','clipboard','Ctrl+V');separator();add('select-all','Select all','text-select','Ctrl+A');
+    add('cut','Cut','scissors','Ctrl+X',!selected);add('copy','Copy','copy','Ctrl+C',!selected);add('paste','Paste','clipboard','Ctrl+V');separator();directions();separator();add('select-all','Select all','text-select','Ctrl+A');
+    separator();add('home','Home','home');
     menu.hidden=false;menu.style.left='0px';menu.style.top='0px';menu.style.maxHeight=Math.max(0,innerHeight-12)+'px';
     const r=menu.getBoundingClientRect();menu.style.left=Math.max(6,Math.min(x,innerWidth-r.width-6))+'px';menu.style.top=Math.max(6,Math.min(y,innerHeight-r.height-6))+'px';menu.scrollTop=0;
     if(!reducedMotion.matches)menu.animate([{opacity:0,transform:'translateY(-3px)'},{opacity:1,transform:'translateY(0)'}],{duration:100,easing:'ease-out'});
@@ -53,8 +66,9 @@ window.JotEditorMenu=(()=>{
     const c=context,button=menu.querySelector('[data-action="'+action+'"]');if(!button||button.disabled)return;
     const oldLabel=button.querySelector('span').textContent;
     busy=true;menu.ariaBusy='true';menu.querySelectorAll('button').forEach(b=>b.disabled=true);
-    button.classList.add('pending');button.querySelector('span').textContent=action==='paste'?'Pasting…':['copy','copy-image','cut'].includes(action)?'Copying…':'Working…';
+    button.classList.add('pending');button.querySelector('span').textContent=action==='home'?'Opening…':action==='paste'?'Pasting…':['copy','copy-image','cut'].includes(action)?'Copying…':'Working…';
     try{
+      if(action==='home'){await saveNow();if(!c.cancelled)await request('home');close();return;}
       if(!valid(c))throw new Error('The note changed. Select the content and try again.');restore(c);
       if(action==='copy'||action==='cut'||action==='copy-image'){
         const payload=action==='copy-image'?{html:c.image.outerHTML,text:'',image:c.image.src}:copyPayload();
@@ -70,6 +84,7 @@ window.JotEditorMenu=(()=>{
       }else if(action==='open-image')await request('view-image',c.image.src);
       else if(action==='remove-image')command('delete');
       else if(action==='undo'||action==='redo')undo(action==='redo');
+      else if(action.startsWith('direction-'))setParagraphDirection(action.slice('direction-'.length));
       else if(action==='select-all'){const r=document.createRange();r.selectNodeContents(editor);getSelection().removeAllRanges();getSelection().addRange(r);rememberSelection();}
       close();
     }catch(error){const cancelled=c.cancelled;close();if(!cancelled)showError(error);}
@@ -87,6 +102,10 @@ window.JotEditorMenu=(()=>{
     if(menu.hidden)return;
     if(e.key==='Escape'||e.key==='Tab'){e.preventDefault();e.stopImmediatePropagation();close(true);return;}
     if(busy){e.preventDefault();e.stopImmediatePropagation();return;}
+    if(['ArrowLeft','ArrowRight'].includes(e.key)&&e.target.closest('.context-direction-buttons')){
+      e.preventDefault();e.stopImmediatePropagation();const buttons=[...e.target.closest('.context-direction-buttons').querySelectorAll('button:not(:disabled)')],i=buttons.indexOf(document.activeElement);
+      buttons[(i+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length]?.focus();return;
+    }
     if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){
       e.preventDefault();e.stopImmediatePropagation();const buttons=[...menu.querySelectorAll('button:not(:disabled)')],i=buttons.indexOf(document.activeElement);
       const next=e.key==='Home'?0:e.key==='End'?buttons.length-1:(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons[next]?.focus();

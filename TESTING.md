@@ -2,6 +2,40 @@
 
 ## Current development build (v1.6.0)
 
+`dist/Jot-dev-context-home/Jot.exe` passed **89/89 focused offscreen checks** in `test-results/context-home-01/note-fullscreen-results.json`. New Home-menu checks cover its standard icon/no shortcut, keyboard access and small-menu scrolling, actual button activation, saving the latest draft, reusing Settings as Home without extra windows, keeping the note open, and empty-note/image context availability. Existing direction and fullscreen/drag checks also passed. Release publish, JavaScript syntax checks and `git diff --check` passed. The broad self-test suite was not rerun. No live window was touched, and no installer or commit was made.
+
+## Previous instant-fullscreen build
+
+`dist/Jot-dev-instant/Jot.exe` passed **81/81 focused offscreen checks** in `test-results/note-instant-05/note-fullscreen-results.json`. Release publish, JavaScript syntax, and `git diff --check` passed. The broad self-test suite was not rerun for this iteration; the previous full run is recorded below. No installer or commit was made, and the user's running build was untouched.
+
+Fullscreen switching is immediate and retains the exact native compact rectangle. Dragging the blank fullscreen header downward restores the compact note beneath the pointer, then hands movement back to Windows. Tests cover exact 452×338 restoration, endpoint-only native frames (no tween), repeated/rapid toggles, old animation payloads, click/jitter/right-click/button/cancellation guards, under-pointer placement at 100/125/150/200% math scales, renderer state synchronization, and session persistence after dragging. Direction alignment and selection styling remain covered in both themes.
+
+The test dispatches trusted mouse events inside the offscreen WebView, checks pointer capture, and deliberately moves from header to editor in one event. That uncovered a header-only move listener gap; active gestures now follow document-level moves too. Evidence: `fullscreen-pointer-trace.json` and `fullscreen-frames.json` in the same report directory. The actual native OS drag loop and mixed-DPI monitor movement were not exercised on the live desktop; tests substitute a private offscreen pointer and verify the handoff branch without touching the real cursor.
+
+The native handoff uses [WM_NCLBUTTONDOWN / HTCAPTION with screen coordinates](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown). A current-button check uses the high bit of [GetAsyncKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate), including swapped physical mouse buttons. Native movement is scheduled after the bridge reply so holding a drag does not create a request timeout. Tests never move the real cursor or enter the live desktop's native move loop.
+
+## Previous animated-fullscreen build (superseded)
+
+`dist/Jot-dev-window-motion/Jot.exe` passed **701/701 offscreen checks** in `test-results/window-motion-optimized/results.json`. Release build/publish, JavaScript syntax checks and `git diff --check` passed. No installer or commit was made, and no live user window/monitor was resized.
+
+Direction checks measure the actual text ranges, not just button boxes: option text is horizontally centered, and its vertical center matches the Direction label in both themes. Selected options use a soft border-free fill; the active fullscreen button has a transparent background. Small-window dark/light captures were inspected in `test-results/note-motion-01/note-tools/`.
+
+This earlier build animated native HWND position and dimensions with a 220ms ease-out and restored the exact saved native rectangle, including an explicitly resized/moved 452×338 fixture. The animation was subsequently removed at the user's request. Its historical frame trace is `test-results/window-motion-optimized/fullscreen-motion-frames.json`; this is native offscreen motion evidence, not a claim about visible desktop FPS or mixed-DPI monitor behavior.
+
+The earlier focused motion/UI probe passed **45/45** checks in `test-results/note-motion-01/note-motion-results.json` before the per-frame layout optimization. The replacement probe runs with `Jot.exe --exit-probe --probe-scenario note-fullscreen --test-output <fresh-isolated-directory>`.
+
+## Previous note-tools checks
+
+`dist/Jot-dev-note-tools/Jot.exe` passed **682/682 offscreen checks** in `test-results/note-tools-01/results.json`. Release build/publish, JavaScript syntax checks and `git diff --check` passed. No installer was built and no commit was made. No live user window, monitor fullscreen state, clipboard or notes were modified.
+
+New checks cover a note's header fullscreen/exit button, borderless simulated-monitor dimensions, unchanged peer note/content/preferences, reload synchronization, hide/reopen, repeated transitions, original bounds/chrome restoration, and retaining the compact bounds in the saved work session. The shared native fullscreen path retains image-viewer coverage and does not enable Topmost. True monitor/taskbar fullscreen coverage and mixed-DPI desktop transitions remain untested on the live desktop.
+
+Right-click direction checks cover Auto/LTR/RTL state, current paragraph and multi-paragraph selections, mixed-selection state, automatic Persian/English flow, text preservation, code-block protection, keyboard navigation within the direction choices, undo/redo and save/reload. Actual button clicks and bounds checks run in both themes at minimum note size. The Persian-writing guidance informed preserving isolated Latin fragments and paragraph-local direction without rewriting user text or changing the English app interface.
+
+Visually inspected captures: `test-results/note-tools-01/note-tools/note-fullscreen.png`, `note-direction-menu-dark.png`, and `note-direction-menu-light.png`. The minimum-size context menu scrolls while keeping its direction choices usable. Existing menu actions and More → Direction are retained.
+
+## Previous tray-anchor checks
+
 `dist/Jot-dev-tray-anchor/Jot.exe` passed **75/75 focused tray-anchor checks** in `test-results/tray-anchor-01/tray-anchor-results.json`. Release publish and `git diff --check` passed. This iteration changes tray geometry only; the broader lifecycle suite was not rerun. The previous full run is recorded below. No installer or commit was made.
 
 Unlike previous placement-only tests, the new probe moves the actual WPF popup HWND using the production positioning path, then measures the visible border with `PointToScreen`. All eight light/dark measurements at 100/125/150/200% rendering scales report **dx=0 and dy=0** between the menu's bottom-right and the specified icon top-left. Expanding an error message retains that same corner. Measurements: `test-results/tray-anchor-01/tray-anchor-measurements.json`. The HWND remains invisible, non-activating, non-topmost, offscreen, and absent from the taskbar throughout.

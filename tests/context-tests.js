@@ -8,9 +8,10 @@ window.contextFinished=false;window.contextResults=[];
   const key=value=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:value,bubbles:true}));
   try{
     flushTypingHistory();editor.innerHTML='<p>Currency حذف شد.</p><p>Second line</p>';bookmark=null;onEdit('command');select(true);open();
-    const m=$('editorMenu');check('menu-and-shortcuts',m.role==='menu'&&m.querySelectorAll('[role=menuitem]').length===6&&m.textContent.includes('Ctrl+C'));
+    const m=$('editorMenu');check('menu-and-shortcuts',m.role==='menu'&&m.querySelectorAll('[role=menuitem]').length===7&&m.textContent.includes('Ctrl+C'));
+    check('home-navigation-with-icon-no-shortcut',m.querySelector('[data-action=home] span').textContent==='Home'&&!!m.querySelector('[data-action=home] svg')&&!m.querySelector('[data-action=home] kbd').textContent);
     const r=m.getBoundingClientRect();check('viewport-bounded',r.left>=5&&r.top>=5&&r.right<=innerWidth-5&&r.bottom<=innerHeight-5);
-    key('End');check('keyboard-end',document.activeElement.dataset.action==='select-all');key('ArrowDown');check('keyboard-wrap',document.activeElement===m.querySelector('button:not(:disabled)'));
+    key('End');check('keyboard-end',document.activeElement.dataset.action==='home');key('ArrowDown');check('keyboard-wrap',document.activeElement===m.querySelector('button:not(:disabled)'));
     key('Escape');check('escape-restores-backward-selection',m.hidden&&getSelection().anchorNode===editor&&getSelection().anchorOffset===editor.childNodes.length&&getSelection().focusOffset===0);
     editor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true}));check('shift-f10-opens',!m.hidden);key('Tab');check('tab-dismisses',m.hidden);
     for(const theme of ['dark','light']){

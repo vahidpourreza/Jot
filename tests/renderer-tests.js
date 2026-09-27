@@ -17,7 +17,7 @@
   });
   await test('note-header-has-left-add-right-controls-and-no-app-icon',()=>{
     const buttons=[...document.querySelectorAll('#handle .window-actions>button')];
-    assert(buttons.map(button=>button.id).join(',')==='menuButton,pinButton,hideButton','wrong button order');
+    assert(buttons.map(button=>button.id).join(',')==='menuButton,fullscreenButton,pinButton,hideButton','wrong button order');
     const bounds=buttons.map(button=>button.getBoundingClientRect());
     assert(bounds.every((rect,i)=>i===0||rect.left>bounds[i-1].left),'wrong control ordering');
     const add=$('newButton').getBoundingClientRect(),header=$('handle').getBoundingClientRect();
@@ -27,7 +27,7 @@
     assert($('hideButton').dataset.icon==='x','hide must use X');
     assert(!$('menuButton').closest('.quiet-footer'),'More still in footer');
     assert(!$('notesButton')&&!document.querySelector('#handle [data-icon=jot]'),'note app icon remains');
-    assert([...document.querySelectorAll('#handle button')].map(button=>button.id).join(',')==='newButton,menuButton,pinButton,hideButton','keyboard order differs from visual order');
+    assert([...document.querySelectorAll('#handle button')].map(button=>button.id).join(',')==='newButton,menuButton,fullscreenButton,pinButton,hideButton','keyboard order differs from visual order');
   });
   await test('sticky-menu-styling-preserves-every-existing-option',()=>{
     $('menuButton').click();

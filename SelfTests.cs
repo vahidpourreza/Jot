@@ -147,6 +147,8 @@ public partial class MainWindow
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
             await VerifyNotePreferences(checks,a,b);
+            await VerifyNoteTools(checks);
+            await VerifyNoteFullscreen(checks);
             await VerifyPerformance(checks,a);
             await MeasureWindowAndImageWork(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});

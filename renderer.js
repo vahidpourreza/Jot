@@ -7,6 +7,7 @@ let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer
 let historyTimer=0,typingHistoryPending=false;
 let saveChain=Promise.resolve(),bookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
 let inputDirection='rtl',deleting=false;
+let noteFullscreen=false,fullscreenBusy=false;
 let editorLockedByHost=false;
 const pendingEdits=new Set();
 function trackEdit(operation){pendingEdits.add(operation);operation.then(()=>pendingEdits.delete(operation),()=>pendingEdits.delete(operation));return operation;}
@@ -36,6 +37,7 @@ JotBridge.on(data=>{
   if(data.event==='focus'){resumeEditing();editor.focus();}
   if(data.event==='input-language')setInputDirection(data.direction);
   if(data.event==='active-window')app.dataset.activeWindow=String(data.active);
+  if(data.event==='note-fullscreen'){noteFullscreen=!!data.enabled;updateFullscreenButton();}
   if(data.event==='clipboard-success'&&$('error').dataset.operation?.startsWith('clipboard-'))$('error').hidden=true;
   if(data.event==='preferences'){appPreferences={...JotDesign.defaults,...data.prefs};applyPrefs();refreshToolbar();}
   if(data.event==='note-color'&&activeNote()){activeNote().color=data.color;applyNoteColor();}
@@ -713,6 +715,19 @@ function applyPin(value) {
     if(changed)request('pin',pinned).catch(showError);
 }
 $('pinButton').addEventListener('click',()=>setPreference({pinned:!pinned}));
+function updateFullscreenButton(){
+  const button=$('fullscreenButton');button.ariaPressed=String(noteFullscreen);
+  button.title=button.ariaLabel=noteFullscreen?'Exit fullscreen':'Enter fullscreen';
+  button.replaceChildren(JotDesign.icon(noteFullscreen?'minimize':'maximize'));
+}
+async function toggleNoteFullscreen(){
+  if(fullscreenBusy)return;fullscreenBusy=true;const button=$('fullscreenButton');
+  rememberSelection();closePanels();button.disabled=true;button.ariaBusy='true';button.title='Changing view…';
+  try{noteFullscreen=await request('note-fullscreen',{enabled:!noteFullscreen});restoreSelection();}
+  catch(error){showError(error);}
+  finally{fullscreenBusy=false;button.disabled=false;button.ariaBusy='false';updateFullscreenButton();}
+}
+$('fullscreenButton').onclick=toggleNoteFullscreen;
 async function leave(action) { try { if(action!=='hide')await saveNow();await request(action); } catch (error) { showError(error); } }
 $('hideButton').addEventListener('click', () => leave('hide'));
 $('deleteButton').onclick=()=>{closePanels();$('deleteError').hidden=true;$('deleteDialog').showModal();$('deleteCancel').focus();};
@@ -739,9 +754,33 @@ $('exportButton').addEventListener('click', async () => {
   closePanels();
   try { await saveNow(); await request('export', { name: noteName(activeNote()), html: sanitizeHtml(editor.innerHTML) }); } catch (error) { showError(error); }
 });
-$('handle').addEventListener('pointerdown', (event) => {
-  if (event.button === 0 && !event.target.closest('button')) request('drag').catch(showError);
+let headerDrag=null;
+function cancelHeaderDrag(){
+  const drag=headerDrag;headerDrag=null;
+  if(drag&&$('handle').hasPointerCapture(drag.id))$('handle').releasePointerCapture(drag.id);
+}
+$('handle').addEventListener('pointerdown',event=>{
+  if(event.button!==0||event.isPrimary===false||event.target.closest('button')||fullscreenBusy)return;
+  if(!noteFullscreen){request('drag').catch(showError);return;}
+  event.preventDefault();
+  const rect=$('handle').getBoundingClientRect();
+  headerDrag={id:event.pointerId,startY:event.clientY,anchorX:(event.clientX-rect.left)/rect.width,anchorY:event.clientY-rect.top};
+  if(event.isTrusted)$('handle').setPointerCapture(event.pointerId);
 });
+// Track an active header gesture across the document as well as pointer
+// capture: WebView can deliver a fast downward move to the editor underneath.
+document.addEventListener('pointermove',event=>{
+  if(!headerDrag||event.pointerId!==headerDrag.id)return;
+  if(!(event.buttons&1)){cancelHeaderDrag();return;}
+  if(event.clientY-headerDrag.startY<8)return;
+  const drag=headerDrag;cancelHeaderDrag();
+  if(!noteFullscreen||fullscreenBusy)return;
+  closePanels();
+  request('drag',{restore:true,anchorX:drag.anchorX,anchorY:drag.anchorY}).catch(showError);
+});
+for(const type of ['pointerup','pointercancel'])document.addEventListener(type,cancelHeaderDrag);
+$('handle').addEventListener('lostpointercapture',cancelHeaderDrag);
+window.addEventListener('blur',cancelHeaderDrag);
 document.addEventListener('pointerdown', (event) => {
   if(!event.target.closest('#formatBar,.format-popover'))closeFormatMenus();
   if (!event.target.closest('#menu,#menuButton')) setNoteMenuVisible(false);
@@ -770,6 +809,7 @@ async function boot() {
     button.onclick=()=>setNoteColor(accent.slug);$('noteColors').append(button);
   }
   const {context,model:stored}=await request('note-load');
+  noteFullscreen=!!context.fullscreen;updateFullscreenButton();
   app.dataset.activeWindow=String(!!context.active);
   setInputDirection(context.inputDirection);
   if(!stored||!stored.notes.some(note=>note.id===context.noteId))throw new Error('یادداشت پیدا نشد.');

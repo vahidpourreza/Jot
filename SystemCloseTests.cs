@@ -13,6 +13,13 @@ public partial class MainWindow
         if(!testing||!session.ExitProbe)throw new InvalidOperationException("Exit probes require isolated test mode.");
         Directory.CreateDirectory(testOutput);
         int index=Array.IndexOf(args,"--probe-scenario");var scenario=index>=0&&index+1<args.Length?args[index+1]:"";
+        if(scenario is "note-fullscreen" or "note-motion")
+        {
+            var checks=new List<object>();await VerifyNoteTools(checks);await VerifyNoteFullscreen(checks);
+            var json=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});await File.WriteAllTextAsync(Path.Combine(testOutput,"note-fullscreen-results.json"),json);
+            using var report=JsonDocument.Parse(json);bool passed=report.RootElement.EnumerateArray().All(c=>c.GetProperty("passed").GetBoolean());
+            ClosePermanently();System.Windows.Application.Current.Shutdown(passed?0:1);return;
+        }
         if(scenario=="tray-anchor")
         {
             var checks=new List<object>();VerifyTrayEdges(checks);VerifyTrayOverflow(checks);await VerifyTrayNativeAnchor(checks);
