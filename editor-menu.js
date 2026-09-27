@@ -29,7 +29,7 @@ window.JotEditorMenu=(()=>{
   function separator(){const line=document.createElement('div');line.role='separator';menu.append(line);}
   function open(x,y,target,keyboard=false){
     if(busy||!ready||composing||deleting)return;
-    closePanels();flushTypingHistory();const image=target?.closest?.('img');
+    window.JotMenus?.close();closePanels();flushTypingHistory();const image=target?.closest?.('img');
     if(image&&editor.contains(image)){
       const range=document.createRange();range.selectNode(image);getSelection().removeAllRanges();getSelection().addRange(range);
     }else if(!keyboard){

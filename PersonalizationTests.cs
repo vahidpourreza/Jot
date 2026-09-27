@@ -21,11 +21,14 @@ public partial class MainWindow
 
         // Simulate an inaccessible recovery location without changing live user data.
         var trash=Path.Combine(store.Root,"trash");
+        var earlierTrash=Path.Combine(store.Root,"trash-before-delete-check");
+        if(Directory.Exists(trash))Directory.Move(trash,earlierTrash);
         await File.WriteAllTextAsync(trash,"blocked recovery path");
         await c.Script("document.getElementById('deleteButton').click();document.getElementById('deleteConfirm').click()");
         await c.WaitFor("!document.getElementById('deleteError').hidden&&!document.getElementById('deleteConfirm').disabled");
         checks.Add(new{name="failed-delete-leaves-editor-and-store-intact",passed=session.Windows.Contains(c)&&await c.Script("editor.isContentEditable&&editor.textContent.includes('Delete test')")=="true"&&(await store.Load())!.Value.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==c.NoteId)});
         File.Move(trash,Path.Combine(store.Root,"blocked-recovery-test.txt"));
+        if(Directory.Exists(earlierTrash))Directory.Move(earlierTrash,trash);
         await c.ClickControl("#deleteCancel");
 
         // A changed draft (including its original embedded image) must be in recovery.
@@ -35,7 +38,7 @@ public partial class MainWindow
         for(int i=0;i<200&&session.Windows.Contains(c);i++)await Task.Delay(40);
         checks.Add(new{name="delete-removes-only-selected-note-and-closes-its-window",passed=!session.Windows.Contains(c)&&session.Windows.Contains(a)&&session.Windows.Contains(b)&&!(await store.Load())!.Value.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==c.NoteId)});
         await WaitFor("!homeData.notes.some(n=>n.id==="+JsonSerializer.Serialize(c.NoteId)+")");
-        using var archive=JsonDocument.Parse(await File.ReadAllTextAsync(Directory.GetFiles(trash,"*.json").Single()));
+        using var archive=JsonDocument.Parse(await File.ReadAllTextAsync(Directory.GetFiles(trash,c.NoteId+"-*.json").Single()));
         var archivedNote=archive.RootElement.GetProperty("note");
         checks.Add(new{name="deleted-note-recovery-retains-latest-draft-and-full-image",passed=archivedNote.GetProperty("plain").GetString()!.Contains("Latest unsaved")&&archivedNote.GetProperty("html").GetString()!.Contains(image)});
         bool staleRejected=false;
@@ -61,12 +64,11 @@ public partial class MainWindow
         bool badColorRejected=false;
         try{await legacyStore.SaveMetadata(JsonSerializer.SerializeToElement(new{id,color="unlisted-color"}));}catch(InvalidDataException){badColorRejected=true;}
         checks.Add(new{name="note-color-accepts-only-known-palette",passed=badColorRejected});
-        Directory.CreateDirectory(legacyStore.FilePath+".tmp");
+        await SetStoreTrigger(legacyStore,"CREATE TRIGGER fail_delete BEFORE DELETE ON notes BEGIN SELECT RAISE(ABORT,'synthetic delete failure');END;");
         bool deleteWriteRejected=false;
-        try{await legacyStore.Delete(id);}catch(UnauthorizedAccessException){deleteWriteRejected=true;}
-        catch(IOException){deleteWriteRejected=true;}
+        try{await legacyStore.Delete(id);}catch(Microsoft.Data.Sqlite.SqliteException){deleteWriteRejected=true;}
         checks.Add(new{name="failed-store-write-keeps-note-after-archiving",passed=deleteWriteRejected&&(await legacyStore.Load())!.Value.GetProperty("notes").GetArrayLength()==1&&Directory.GetFiles(Path.Combine(legacyStore.Root,"trash"),"*.json").Length==1});
-        Directory.Move(legacyStore.FilePath+".tmp",Path.Combine(legacyStore.Root,"blocked-write-test"));
+        await SetStoreTrigger(legacyStore,"DROP TRIGGER fail_delete;");
         await legacyStore.Delete(id);
         checks.Add(new{name="deleting-last-note-leaves-valid-empty-store",passed=(await legacyStore.Load())!.Value.GetProperty("notes").GetArrayLength()==0});
         VerifyIconSizes(checks);

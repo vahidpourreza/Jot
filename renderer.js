@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 const editor = $('editor'), app = $('app'), request = JotBridge.request;
 let model = {version:2,activeId:null,notes:[],prefs:{...JotDesign.defaults}};
+let appPreferences={...JotDesign.defaults},notePreferenceChain=Promise.resolve(),notePreferenceRevision=0,confirmedNoteView={};
 let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer;
 let historyTimer=0,typingHistoryPending=false;
 let saveChain=Promise.resolve(),bookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
@@ -27,7 +28,7 @@ JotBridge.on(data=>{
   if(data.event==='input-language')setInputDirection(data.direction);
   if(data.event==='active-window')app.dataset.activeWindow=String(data.active);
   if(data.event==='clipboard-success'&&$('error').dataset.operation?.startsWith('clipboard-'))$('error').hidden=true;
-  if(data.event==='preferences'){model.prefs={...JotDesign.defaults,...data.prefs};applyPrefs();refreshToolbar();}
+  if(data.event==='preferences'){appPreferences={...JotDesign.defaults,...data.prefs};applyPrefs();refreshToolbar();}
   if(data.event==='note-color'&&activeNote()){activeNote().color=data.color;applyNoteColor();}
   if(data.event==='warning'||data.event==='quit-failed'){
     showError(Object.assign(new Error(data.message),{operation:data.event,logged:true}));
@@ -226,7 +227,8 @@ function onEdit(kind = 'typing') {
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => app.classList.remove('typing'), 1800);
 }
-function saveNow() {
+async function saveNow() {
+  await notePreferenceChain;
   clearTimeout(saveTimer);
   if (!ready) return Promise.reject(new Error('یادداشت‌ها هنوز آماده نیستند.'));
   if(revision<=savedRevision)return saveChain;
@@ -338,7 +340,9 @@ function openNotes() {
   saveNow().then(()=>request('home')).catch(showError);
 }
 function applyPrefs() {
-  model.prefs=JotDesign.apply(model.prefs);
+  const view=activeNote()?.view??{},overrides={};
+  for(const key of ['fontSize','lineHeight','toolbarVisible','pinned'])if(key in view)overrides[key]=view[key];
+  model.prefs=JotDesign.apply({...appPreferences,...overrides});
   applyNoteColor();
   $('fontSize').textContent=model.prefs.fontSize+' px';
   $('smallerButton').disabled=model.prefs.fontSize<=13;
@@ -352,9 +356,10 @@ function applyPrefs() {
   $('looserLinesButton').title=$('looserLinesButton').disabled?'Maximum line height (2.5×)':'Increase line height';
   const nextMode=model.prefs.theme==='dark'?'light':'dark';
   $('themeLabel').textContent=nextMode==='light'?'Light mode':'Dark mode';
-  $('themeButton').title='Switch all Jot windows to '+nextMode+' mode';
+  $('themeButton').title='Switch all of Jot to '+nextMode+' mode';
   keepFormatOpen=model.prefs.toolbarVisible!==false;
   setToolbarVisible(keepFormatOpen);
+  applyPin(!!model.prefs.pinned);
 }
 function applyNoteColor() {
   const color=JotDesign.noteColor(activeNote()?.color);
@@ -377,10 +382,25 @@ async function setNoteColor(color) {
   catch(error){showError(error);}
   finally{buttons.forEach(button=>button.disabled=false);chosen?.removeAttribute('aria-busy');}
 }
-async function setPreference(patch) {
-  model.prefs={...model.prefs,...patch};applyPrefs();
-  try{model.prefs=JotDesign.apply(await request('preferences',patch));applyPrefs();}
-  catch(error){showError(error);}
+function setAppTheme(theme) {
+  // Keep writes ordered with note changes, but only the shared preference
+  // broadcast applies theme. A stale per-note view can never override it.
+  notePreferenceChain=notePreferenceChain.then(()=>request('app-theme',theme)).catch(showError);
+  return notePreferenceChain;
+}
+function setPreference(patch) {
+  const target=activeNote(),sequence=++notePreferenceRevision;
+  target.view={...target.view,...patch};applyPrefs();
+  notePreferenceChain=notePreferenceChain.then(async()=>{
+    try{
+      const view=await request('note-preferences',{id:target.id,settings:patch});confirmedNoteView={...view};
+      if(sequence===notePreferenceRevision){target.view={...view};applyPrefs();}
+    }catch(error){
+      if(sequence===notePreferenceRevision){target.view={...confirmedNoteView};applyPrefs();}
+      showError(error);
+    }
+  });
+  return notePreferenceChain;
 }
 function refreshToolbar() {
   document.querySelectorAll('[data-command][aria-pressed]').forEach((button) => button.setAttribute('aria-pressed', String(document.queryCommandState(button.dataset.command))));
@@ -655,19 +675,19 @@ $('noteColors').addEventListener('keydown',event=>{
   const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:Math.max(0,Math.min(buttons.length-1,index+step));
   buttons.forEach((button,i)=>button.tabIndex=i===next?0:-1);buttons[next].focus({preventScroll:true});
 });
-$('themeButton').addEventListener('click',()=>setPreference({theme:model.prefs.theme==='dark'?'light':'dark'}));
+$('themeButton').addEventListener('click',()=>setAppTheme(model.prefs.theme==='dark'?'light':'dark'));
 for (const [id, delta] of [['smallerButton', -1], ['largerButton', 1]]) $(id).addEventListener('click', () => setPreference({fontSize:Math.min(24,Math.max(13,model.prefs.fontSize+delta))}));
-$('pinButton').addEventListener('click', async () => {
-  try {
-    pinned = await request('pin', !pinned);
+function applyPin(value) {
+    const changed=pinned!==value;pinned=value;
     $('pinButton').setAttribute('aria-pressed', String(pinned));
     const glyph=JotDesign.icon('pin');
     if(pinned)glyph.querySelector('path:last-child').setAttribute('fill','currentColor');
     $('pinButton').replaceChildren(glyph);
     $('pinButton').title=pinned?'Unpin note':'Keep note on top';
     $('pinButton').setAttribute('aria-label',$('pinButton').title);
-  } catch (error) { showError(error); }
-});
+    if(changed)request('pin',pinned).catch(showError);
+}
+$('pinButton').addEventListener('click',()=>setPreference({pinned:!pinned}));
 async function leave(action) { try { await saveNow(); await request(action); } catch (error) { showError(error); } }
 $('hideButton').addEventListener('click', () => leave('hide'));
 $('deleteButton').onclick=()=>{closePanels();$('deleteError').hidden=true;$('deleteDialog').showModal();$('deleteCancel').focus();};
@@ -733,7 +753,8 @@ async function boot() {
   app.dataset.activeWindow=String(!!context.active);
   setInputDirection(context.inputDirection);
   if(!stored||!stored.notes.some(note=>note.id===context.noteId))throw new Error('یادداشت پیدا نشد.');
-  model=stored;model.prefs={...JotDesign.defaults,...stored.prefs};model.activeId=context.noteId;
+  model=stored;appPreferences={...JotDesign.defaults,...stored.prefs};model.prefs={...appPreferences};model.activeId=context.noteId;
+  confirmedNoteView={...activeNote().view};
   selectNote(context.noteId);ready=true;editor.contentEditable='true';
   document.execCommand('defaultParagraphSeparator',false,'p');
   applyPrefs();setStatus('saved','ذخیره شد');savedRevision=revision;editor.focus();window.jotReady=true;

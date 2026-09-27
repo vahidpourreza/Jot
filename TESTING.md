@@ -1,10 +1,46 @@
 # Jot workspace verification
 
+## Current development build (v1.6.0)
+
+`dist/Jot-dev-theme/Jot.exe` passed **436/436 offscreen checks** in `test-results/global-theme-01/results.json`. No installer was built or updated for this iteration. Release publish, JavaScript syntax checks and `git diff --check` passed. The running `dist/Jot-dev` app was left untouched.
+
+Added checks cover independent per-note font/line-height/toolbar/pin persistence, rapid setting changes, cross-note/global-writing-default rejection from note windows, unchanged siblings and note HTML, new-note defaults, schema-1 upgrade seeding, retained pre-upgrade backups, failed-upgrade recovery, validation of note-setting values, stale content saves preserving view settings, and cascading cleanup of deleted-note preferences. Settings UI now describes app appearance and new-note defaults explicitly.
+
+Theme is global, not per-note. Both Light/Dark choices from a note update the index, sibling notes, open images and tray menu. Settings and the real More button synchronize each other; changes persist across note reloads. Rapid changes keep the last choice. Invalid theme requests cannot write other settings. Old per-note themes are ignored on database/renderer reads and import, and removed on settings saves. Content, header colors, writing preferences and Pin stay intact throughout.
+
+Context checks verify that generic browser menus are disabled on index/note/image/settings surfaces, headers stay quiet, editable fields offer a styled menu without reading the clipboard on open, Persian selection Copy and plain Paste work, a failed Cut preserves text, modal menus remain in the top layer, and Escape dismisses the menu without closing its dialog. The image content menu offers working viewing actions. Input and image-menu captures were visually inspected.
+
+Image Copy is sampled frame-by-frame during an injected clipboard delay: fit mode, a zoomed/panned view at its scroll limits, and a failed Copy retain the same zoom, viewport size, canvas size and horizontal/vertical scroll positions. Pending feedback remains visible but out of flow. A delayed pre-menu scroll notification from Fit/focus was reproduced and fixed without hiding real scrolling. The delete-recovery test fixture now preserves earlier synthetic trash instead of assuming its directory is absent.
+
+The user’s live app, clipboard and note data were not used by these tests. Schema upgrades occur only when the user opens the new development build against their own data.
+
+## Offline installer verification
+
+The offline v1.5.0 installer has been produced at `dist/installer/Jot-Setup-1.5.0-win-x64.exe`. The acquired Microsoft Fixed Version runtime is 154.0.4258.37, with verified signature/version and pinned CAB SHA-256. The packaged app passed **384/384** full checks, **8/8** private-runtime smoke checks, and **9/9** isolated installer checks (fresh installation, installed-app smoke, repair/reinstall, no production uninstall registration, exclusion of test assets, removal of app/runtime, and preservation of isolated notes). Evidence: `artifacts/verification/1.5.0-20260927-084729-44dd50`.
+
+The smoke test uses missing inherited .NET/WebView2 environment paths, then checks the actual loaded local .NET/WPF assemblies and bundled browser process, plus bilingual SQLite persistence. Tests remain hidden, offscreen, non-activating, non-topmost and use isolated data. Validation setup uses a distinct AppId, no icons, and no production uninstall registration. The user’s app/data and system WebView2 installation were not changed.
+
+A cached repeat build with collected third-party notices passed the 8 smoke checks again under `artifacts/verification/1.5.0-20260927-085823-897b98`; it took **111.6 seconds** and produced a **333.93 MiB** installer. The full validation run took **412.5 seconds**. The latest installer hash is recorded in `dist/installer/release-info.json` and its `.sha256` companion. These are host-isolated tests, not a clean Windows VM test. The installer is unsigned; no SmartScreen bypass or signing certificate is implied. See [release instructions](docs/releasing.md).
+
+## SQLite release (v1.5.0)
+
+The current `dist/Jot-sqlite` build passed **384/384 offscreen checks**. Evidence: `test-results/sqlite-final/results.json`, SQLite 3.53.4 runtime assertion, performance reports, and offscreen captures. It uses Microsoft.Data.Sqlite 10.0.12 with the explicitly pinned native bundle. No production data was migrated by the test run, and the previous app was not opened, restarted or interrupted.
+
+Release publish and `git diff --check` passed. Dependency versions are recorded in `packages.lock.json`; the final locked restore resolved the same provider/native versions exercised by the suite. The NuGet vulnerability check, including transitive dependencies, reported no known vulnerable packages from the public NuGet source at validation time.
+
+New checks verify one-time JSON migration; byte-identical original JSON and its backup; retained note IDs/order/active note, groups/titles/colors/timestamps, extra metadata, preferences, Persian/English content and embedded images; summary-only index reads; parameterized group names; targeted note updates; metadata ownership; cross-window/store-instance writes; atomic rollback after an earlier statement succeeds; stale-save rejection; bounded write-lock contention; independent verified SQLite backups and retention after failed backup; unsupported/corrupt databases failing closed; and retryable migration failures. Child-process tests terminate only their own invisible synthetic-store process before or after commit, reopen the resulting WAL database, and check both recovered content and integrity.
+
+The old JSON `.tmp` obstruction tests were replaced with real SQLite statement failures, preserving their data-retention assertions. Normal store work is on background workers, not the UI thread. In the final fixture, `performance.json` reports the measured 5.2 MiB database save/read workload; it now reads only the edited note, so it is not a like-for-like comparison with the previous full-collection JSON reload. No guarantee of general UI responsiveness or physical disk-failure recovery is implied. Image UI/storage behavior was intentionally not redesigned.
+
+See [SQLite storage and recovery](docs/sqlite-storage.md) for schema, migration, backup semantics, known limits and dependency references. Older release results below are historical.
+
+## Prior release history
+
 Generated test artifacts were cleaned after the project directory was renamed to `D:\Platform\Jot`. The latest `test-results/context-final` reports and screenshots remain; its temporary profiles/data and older generated runs were moved to the Windows Recycle Bin. Historical artifact paths below describe prior runs and may no longer exist locally. Test source code is unchanged.
 
 Obsolete releases and rebuildable `bin`, `obj`, and unused Electron dependencies were also cleaned, retaining `dist/Jot-context`. Legacy browser profiles discovered in `bin` were first archived under the ignored `recovery` directory and every archived file was hash-verified. Cleanup preserved source/tests, the current release, latest reports, and current notes byte-for-byte; it did not rerun the app or test suite.
 
-The current `dist/Jot-context` v1.4.0 build passed **341/341 offscreen checks** and a Release publish with no warnings. Evidence: **test-results/context-final/results.json** and its sibling PNG captures. JavaScript syntax checks and `git diff --check` passed. The running user app, user notes, real clipboard, foreground, tray, and taskbar settings were not changed.
+The previous `dist/Jot-context` v1.4.0 build passed **341/341 offscreen checks** and a Release publish with no warnings. Evidence: **test-results/context-final/results.json** and its sibling PNG captures. JavaScript syntax checks and `git diff --check` passed. The running user app, user notes, real clipboard, foreground, tray, and taskbar settings were not changed.
 
 New checks cover a real WebView right-click opening the custom note menu; retained text/backward selections; keyboard opening/navigation/dismissal; compact-window scrolling; separate menu/note surfaces in both themes; Undo/Redo, Copy, Cut and plain-text Paste; original-resolution image Copy, Open and undoable Remove; mixed text/image paste order and thumbnail size; empty paste; UTF-8 CF_HTML decoding and malformed-HTML fallback. Failed/superseded copying, edits, IME composition, or Escape during a pending Cut never remove the selection. Slow image paste cannot overwrite new typing. Native clipboard access is replaced with in-memory fixtures during these checks.
 
@@ -86,7 +122,7 @@ All checks run against the real .NET host and WebView2 renderer, with isolated n
 Coverage:
 - Home screen creates independent windows; reopening a note reuses its existing window.
 - Concurrent editors preserve each other's data.
-- Global theme, icon weight, and writing preferences update across windows without changing each note's chosen accent.
+- Global theme and icon weight update across windows without changing each note's accent or independent writing preferences.
 - The writing toolbar defaults to visible, can be hidden, and persists.
 - Automatic Persian/English paragraph direction.
 - Bold, italic, underline, colors, headings, lists, undo/redo.

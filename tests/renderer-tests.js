@@ -77,9 +77,9 @@
   await test('restored-more-options-theme-and-size-work',async()=>{
     assert(['copyButton','exportButton','smallerButton','largerButton','themeButton'].every(id=>$(id).closest('#menuActions')),'options missing from More');
     const theme=model.prefs.theme;$('themeButton').click();
-    for(let i=0;i<100&&(await request('load')).prefs.theme===theme;i++)await sleep(10);
+    await notePreferenceChain;
     assert(model.prefs.theme!==theme,'restored theme button failed');
-    await setPreference({theme});
+    await setAppTheme(theme);
     const previous=model.prefs.fontSize;$('largerButton').click();
     for(let i=0;i<100&&model.prefs.fontSize!==previous+1;i++)await sleep(10);
     assert(model.prefs.fontSize===previous+1,'restored text-size action failed');
@@ -96,15 +96,15 @@
     assert(document.querySelector('.size-label').textContent==='Font size'&&$('fontSize').textContent.endsWith(' px'),'font-size units missing');
     const theme=model.prefs.theme;
     for(const mode of ['light','dark']){
-      await setPreference({theme:mode});
+      await setAppTheme(mode);
       assert($('themeLabel').textContent===(mode==='light'?'Dark':'Light')+' mode','theme label does not match action');
     }
-    await setPreference({theme});
+    await setAppTheme(theme);
   });
   await test('pin-has-no-solid-background-and-footer-stays-neutral',async()=>{
     const initialTheme=model.prefs.theme;
     for(const theme of ['dark','light']){
-      await setPreference({theme,coloredIcons:true});
+      await setAppTheme(theme);
       app.dataset.activeWindow='true';
       assert(getComputedStyle(editor).color===getComputedStyle(document.documentElement).color,'note header color leaked into writing text');
       const writingTop=$('writingArea').getBoundingClientRect().top;
@@ -127,7 +127,7 @@
       assert($('pinButton').getAttribute('aria-pressed')==='false','pin did not clear');
       assert(!$('pinButton').querySelector('path[fill="currentColor"]'),'unpin retained filled body');
     }
-    await setPreference({theme:initialTheme});
+    await setAppTheme(initialTheme);
   });
   await test('x-hides-current-note-after-save-and-cannot-quit-app',async()=>{
     const id=model.activeId;write('<p>Hide-note save sentinel</p>');
@@ -182,7 +182,7 @@
   await test('footer-svg-icons-share-size-and-center-in-both-themes',async()=>{
     const previousTheme=model.prefs.theme;
     for(const theme of ['dark','light']){
-      await setPreference({theme});
+      await setAppTheme(theme);
       const buttons=[...document.querySelectorAll('.quiet-footer button')],centers=[];
       for(const button of buttons){
         const svg=button.querySelector(':scope>svg');assert(svg,'icon is nested in a baseline-producing wrapper');
@@ -194,7 +194,7 @@
       assert(Math.max(...centers)-Math.min(...centers)<.1,'icons do not share a vertical center');
       assert($('formatButton').dataset.icon==='type'&&getComputedStyle($('formatButton').querySelector('svg')).transform==='none','original unrotated T toggle is not restored');
     }
-    await setPreference({theme:previousTheme});
+    await setAppTheme(previousTheme);
   });
   await test('format-bold-italic-underline-color',async()=>{write('<p>Selected words</p>');select('Selected');for(const command of ['bold','italic','underline'])document.querySelector('[data-command="'+command+'"]').click();document.querySelector('[data-color="#60a5fa"]').click();assert(/font-weight: (bold|700)|<b>/.test(editor.innerHTML),'bold');assert(editor.innerHTML.includes('italic'),'italic');assert(editor.innerHTML.includes('underline'),'underline');assert(editor.innerHTML.includes('96, 165, 250'),'color');await sleep(160);assert(JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color)==='#60a5fa','T glyph does not show selected text color');});
   await test('inline-strikethrough-toggles-without-clear-formatting',()=>{write('<p>More tools inline</p>');select('tools');const button=document.querySelector('[data-command=strikeThrough]');button.click();assert(/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough failed');button.click();assert(!/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough did not toggle off');assert(!document.querySelector('[data-command=removeFormat]'),'Clear formatting remains');});

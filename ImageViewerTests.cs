@@ -25,6 +25,18 @@ public partial class MainWindow
             viewer.Width=360;viewer.Height=280;await Task.Delay(150);await viewer.ClickControl("#fitButton");
             await Check("minimum-size-fit-and-controls","(()=>{const r=fullImage.getBoundingClientRect(),s=stage.getBoundingClientRect();return fitMode&&r.left>=s.left&&r.right<=s.right&&r.bottom<=s.bottom&&[...document.querySelectorAll('button')].every(b=>{const x=b.getBoundingClientRect();return x.left>=0&&x.right<=innerWidth&&x.top>=0&&x.bottom<=innerHeight;});})()");
             await viewer.Capture("image-viewer-small");
+            await VerifyImageCopyLayout(checks,viewer);
+            await viewer.RightClickControl("#imageHandle");
+            checks.Add(new{name="image-chrome-has-no-browser-or-custom-menu",passed=!viewer.Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled&&await viewer.Script("document.getElementById('contentContextMenu').hidden")=="true"});
+            await viewer.Script("window.menuTrace=[];for(const kind of ['pointerdown','contextmenu','scroll'])document.addEventListener(kind,e=>window.menuTrace.push({kind,target:e.target.id,prevented:e.defaultPrevented}),true);window.addEventListener('resize',()=>window.menuTrace.push({kind:'resize'}))");
+            await viewer.RightClickControl("#fullImage");
+            try{await viewer.WaitFor("!document.getElementById('contentContextMenu').hidden",25);}
+            catch{
+                await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(testOutput,"image-menu-debug.json"),await viewer.Script("({trace:window.menuTrace,rect:fullImage.getBoundingClientRect().toJSON(),stage:stage.getBoundingClientRect().toJSON(),menuHidden:document.getElementById('contentContextMenu').hidden,scroll:[stage.scrollLeft,stage.scrollTop],viewport:[innerWidth,innerHeight],focus:document.activeElement.id})"));throw;
+            }
+            checks.Add(new{name="image-content-has-purpose-built-context-actions",passed=await viewer.Script("['copy','zoom-in','zoom-out','fit','actual','fullscreen'].every(action=>document.querySelector('#contentContextMenu [data-action=\"'+action+'\"]'))")=="true"});
+            await viewer.Capture("image-context-menu");await viewer.ClickControl("#contentContextMenu [data-action=actual]");
+            checks.Add(new{name="image-context-actual-size-action-works",passed=await viewer.Script("zoom===1&&!fitMode")=="true"});
             await viewer.Script("fit(false)");
             await viewer.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseWheel\",\"x\":150,\"y\":140,\"deltaX\":0,\"deltaY\":-120}");
             await viewer.WaitFor("zoom>1");await Check("wheel-zoom","zoom>1&&!fitMode");
@@ -51,5 +63,23 @@ public partial class MainWindow
             checks.Add(new{name="image-controls-close-while-fullscreen-safe",passed=viewer.windowClosed&&viewer.browserDisposed&&!viewer.Post(new{@event="late-fullscreen"})});
         }
         finally{viewer.ClosePermanently();}
+    }
+    private async Task VerifyImageCopyLayout(List<object> checks,MainWindow viewer)
+    {
+        viewer.TestClipboardDelayMs=450;
+        await viewer.Script("window.imageGeometry=()=>JSON.stringify([stage.clientWidth,stage.clientHeight,stage.scrollWidth,stage.scrollHeight,stage.scrollLeft,stage.scrollTop,zoom,fullImage.style.left,fullImage.style.top,fullImage.style.width,fullImage.style.height]);");
+        foreach(var mode in new[]{"fit","panned","failure"})
+        {
+            viewer.TestClipboardWriteAccepted=mode!="failure";
+            await viewer.Script(mode=="fit"?"fit(true)":"setZoom(3);stage.scrollLeft=stage.scrollWidth;stage.scrollTop=stage.scrollHeight");await Task.Delay(100);
+            await viewer.Script("window.copyBaseline=imageGeometry();window.copyGeometrySamples=[];window.trackCopy=true;window.sampleCopy=()=>{window.copyGeometrySamples.push(imageGeometry());if(window.trackCopy)requestAnimationFrame(window.sampleCopy)};requestAnimationFrame(window.sampleCopy);window.oldImageFooter=document.getElementById('imageDimensions').textContent");
+            await viewer.ClickControl("#imageCopy");
+            checks.Add(new{name="image-copy-pending-feedback-is-out-of-flow-"+mode,passed=await viewer.Script("document.getElementById('imageCopy').disabled&&!document.getElementById('imageCopyStatus').hidden&&getComputedStyle(document.getElementById('imageCopyStatus')).position==='absolute'&&document.getElementById('imageDimensions').textContent===window.oldImageFooter")=="true"});
+            await viewer.WaitFor("!document.getElementById('imageCopy').disabled");await Task.Delay(80);
+            await viewer.Script("window.trackCopy=false");
+            checks.Add(new{name="image-copy-never-changes-zoom-scroll-or-viewport-"+mode,passed=await viewer.Script("window.copyGeometrySamples.length>2&&window.copyGeometrySamples.every(value=>value===window.copyBaseline)&&imageGeometry()===window.copyBaseline")=="true"});
+            await viewer.Script("document.getElementById('imageError').hidden=true");
+        }
+        viewer.TestClipboardWriteAccepted=true;viewer.TestClipboardDelayMs=0;await viewer.Script("fit(true)");
     }
 }

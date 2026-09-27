@@ -51,7 +51,7 @@ public partial class MainWindow
             {
                 var watch=Stopwatch.StartNew();
                 await isolated.SaveNote(JsonSerializer.SerializeToElement(new { id=ids[0],html="<p>"+content+i+"</p>",plain="Synthetic fixture",updatedAt=i }));
-                await isolated.Load(); saves.Add(watch.Elapsed.TotalMilliseconds);
+                await isolated.LoadNote(ids[0]); saves.Add(watch.Elapsed.TotalMilliseconds);
                 await Task.Delay(30);
             }
         }
@@ -62,28 +62,25 @@ public partial class MainWindow
         checks.Add(new { name="performance-fixtures-complete-without-editor-errors",passed=await note.Script("!window.perfFailure")=="true"&&gaps.Count>0 });
         var index=(await isolated.LoadIndex())!.Value;
         checks.Add(new { name="index-load-excludes-rich-html-and-original-images",passed=index.GetRawText().Length<10000&&index.GetProperty("notes").EnumerateArray().All(n=>!n.TryGetProperty("html",out _)) });
-        // The cache must observe external changes and must never publish a failed write.
+        // Force a real SQLite statement failure. The transaction must publish nothing.
         var cachedBefore=(await isolated.Load())!.Value;
-        var pendingPath=isolated.FilePath+".tmp";
-        Directory.CreateDirectory(pendingPath);
+        await SetStoreTrigger(isolated,"CREATE TRIGGER fail_save BEFORE UPDATE ON notes BEGIN SELECT RAISE(ABORT,'synthetic write failure');END;");
         bool rejected=false;
         try { await isolated.SaveNote(JsonSerializer.SerializeToElement(new{id=ids[0],html="<p>Must not publish</p>",plain="Must not publish",updatedAt=99})); }
-        catch(IOException){rejected=true;}
-        catch(UnauthorizedAccessException){rejected=true;}
-        finally { Directory.Delete(pendingPath); }
-        checks.Add(new { name="failed-write-keeps-committed-cache-and-index",passed=rejected&&(await isolated.Load())!.Value.GetRawText()==cachedBefore.GetRawText()&&(await isolated.LoadIndex())!.Value.GetRawText()==index.GetRawText() });
+        catch(Microsoft.Data.Sqlite.SqliteException){rejected=true;}
+        finally { await SetStoreTrigger(isolated,"DROP TRIGGER fail_save;"); }
+        checks.Add(new { name="failed-sqlite-write-keeps-committed-notes-and-index",passed=rejected&&(await isolated.Load())!.Value.GetRawText()==cachedBefore.GetRawText()&&(await isolated.LoadIndex())!.Value.GetRawText()==index.GetRawText() });
         await File.WriteAllTextAsync(isolated.FilePath,"invalid-external-change");
-        rejected=false;try{await isolated.Load();}catch(JsonException){rejected=true;}
-        checks.Add(new { name="cache-does-not-mask-external-corruption",passed=rejected&&await File.ReadAllTextAsync(isolated.FilePath)=="invalid-external-change" });
+        rejected=false;try{await isolated.Load();}catch(Microsoft.Data.Sqlite.SqliteException){rejected=true;}
+        checks.Add(new { name="sqlite-reads-do-not-mask-external-corruption",passed=rejected&&await File.ReadAllTextAsync(isolated.FilePath)=="invalid-external-change" });
     }
 
     private async Task VerifyReadyPaint(List<object> checks,MainWindow note)
     {
-        var originalTheme=JsonSerializer.Deserialize<string>(await note.Script("model.prefs.theme"));
+        var originalTheme=(await store.LoadPreferences()).GetProperty("theme").GetString();
         foreach(var mode in new[]{"light","dark"})
         {
-            await note.Script("setPreference({theme:"+JsonSerializer.Serialize(mode)+"}).then(()=>window.paintThemeReady="+JsonSerializer.Serialize(mode)+")");
-            await note.WaitFor("window.paintThemeReady==="+JsonSerializer.Serialize(mode));
+            await store.SavePreferences(JsonSerializer.SerializeToElement(new{theme=mode}));await session.Changed();
             var id=await store.Create();
             var fresh=new MainWindow(session,"note",id);
             checks.Add(new{name="new-note-hidden-before-ready-"+mode,passed=!fresh.ContentReady&&fresh.Opacity==0&&!fresh.IsVisible});
@@ -100,8 +97,6 @@ public partial class MainWindow
             checks.Add(new{name="unchanged-note-does-not-rewrite-store-"+mode,passed=saves==fresh.TestHostActions.Count(action=>action=="save")});
             fresh.ClosePermanently();await store.Delete(id);
         }
-        await note.Script("setPreference({theme:"+JsonSerializer.Serialize(originalTheme)+"}).then(()=>window.paintThemeRestored=true)");
-        await note.WaitFor("window.paintThemeRestored===true");
-        await session.Changed(preferences:false);
+        await store.SavePreferences(JsonSerializer.SerializeToElement(new{theme=originalTheme}));await session.Changed();
     }
 }

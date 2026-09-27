@@ -15,25 +15,26 @@ public partial class MainWindow
         var originalTheme=JsonSerializer.Deserialize<string>(await a.Script("model.prefs.theme"));
         var originalHeight=JsonSerializer.Deserialize<double>(await a.Script("model.prefs.lineHeight"));
         var originalHtml=await a.Script("editor.innerHTML");
+        var otherHeight=await b.Script("model.prefs.lineHeight");
         await GoToSettings();
+        var defaultHeight=await Script("prefs.lineHeight");
         foreach(var height in new[]{1.2,1.95,2.5})
         {
             await a.Script("setPreference({lineHeight:"+JsonSerializer.Serialize(height)+"}).then(()=>window.spacingReady="+JsonSerializer.Serialize(height)+")");
             await a.WaitFor("window.spacingReady==="+JsonSerializer.Serialize(height));
-            await b.WaitFor("model.prefs.lineHeight==="+JsonSerializer.Serialize(height));
-            await WaitFor("prefs.lineHeight==="+JsonSerializer.Serialize(height));
-            checks.Add(new{name="line-height-shared-and-rendered-"+height,passed=await a.Script("Math.abs(parseFloat(getComputedStyle(editor).lineHeight)/parseFloat(getComputedStyle(editor).fontSize)-model.prefs.lineHeight)<.01")=="true"&&await a.Script("editor.innerHTML")==originalHtml});
+            checks.Add(new{name="line-height-independent-and-rendered-"+height,passed=await a.Script("Math.abs(parseFloat(getComputedStyle(editor).lineHeight)/parseFloat(getComputedStyle(editor).fontSize)-model.prefs.lineHeight)<.01")=="true"&&await a.Script("editor.innerHTML")==originalHtml&&await b.Script("model.prefs.lineHeight")==otherHeight&&await Script("prefs.lineHeight")==defaultHeight});
         }
-        checks.Add(new{name="line-height-maximum-disables-plus-without-spinner",passed=await a.Script("document.getElementById('looserLinesButton').disabled&&document.getElementById('looserLinesButton').getAttribute('aria-busy')!=='true'")=="true"&&await Script("document.getElementById('homeLooserLines').disabled")=="true"});
-        await ClickControl("#homeTighterLines");await a.WaitFor("model.prefs.lineHeight===2.2");
-        await a.ClickControl("#menuButton");await a.ClickControl("#tighterLinesButton");await a.WaitFor("model.prefs.lineHeight===1.95");
-        await WaitFor("prefs.lineHeight===1.95");
-        checks.Add(new{name="line-height-controls-in-settings-and-more-work",passed=await Script("prefs.lineHeight===1.95")=="true"});
+        checks.Add(new{name="line-height-maximum-disables-plus-without-spinner",passed=await a.Script("document.getElementById('looserLinesButton').disabled&&document.getElementById('looserLinesButton').getAttribute('aria-busy')!=='true'")=="true"});
+        await ClickControl("#homeTighterLines");await WaitFor("prefs.lineHeight!=="+defaultHeight);
+        checks.Add(new{name="settings-line-height-does-not-change-existing-notes",passed=await a.Script("model.prefs.lineHeight===2.5")=="true"&&await b.Script("model.prefs.lineHeight")==otherHeight});
+        await a.ClickControl("#menuButton");await a.ClickControl("#tighterLinesButton");await a.WaitFor("model.prefs.lineHeight===2.2");await a.ClickControl("#tighterLinesButton");await a.WaitFor("model.prefs.lineHeight===1.95");
+        await Script("preference({lineHeight:"+defaultHeight+"}).then(()=>window.defaultSpacingRestored=true)");await WaitFor("window.defaultSpacingRestored===true");
+        checks.Add(new{name="line-height-controls-in-settings-and-more-work",passed=await Script("prefs.lineHeight==="+defaultHeight)=="true"});
         await a.Capture("line-height-more");await a.Script("closePanels()");
         await a.Reload();checks.Add(new{name="line-height-survives-editor-reload",passed=await a.Script("model.prefs.lineHeight===1.95")=="true"});
         bool badHeightRejected=false;
         try{await store.SavePreferences(JsonSerializer.SerializeToElement(new{lineHeight=0.4}));}catch(InvalidDataException){badHeightRejected=true;}
-        checks.Add(new{name="invalid-line-height-rejected-without-changing-preferences",passed=badHeightRejected&&(await store.Load())!.Value.GetProperty("prefs").GetProperty("lineHeight").GetDouble()==1.95});
+        checks.Add(new{name="invalid-line-height-rejected-without-changing-preferences",passed=badHeightRejected&&(await store.Load())!.Value.GetProperty("prefs").GetProperty("lineHeight").GetRawText()==defaultHeight});
         await ClickControl("#trayVisibility");checks.Add(new{name="settings-tray-visibility-opens-only-on-user-action",passed=session.TestTrayActions.Contains("tray-visibility")});
         await GoToIndex();
         await session.ShowTrayMenu(new System.Drawing.Point(1500,900));

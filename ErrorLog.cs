@@ -24,7 +24,9 @@ internal sealed class ErrorLog(string root, long maxBytes = 1024 * 1024)
         });
         Write(new { utc = DateTimeOffset.UtcNow, runId, processId = Environment.ProcessId, version = typeof(App).Assembly.GetName().Version?.ToString(),
             severity = "error", operation = Token(operation), area = Token(area),
-            exception = exception.GetType().FullName, hresult = $"0x{exception.HResult:X8}", frames });
+            exception = exception.GetType().FullName, hresult = $"0x{exception.HResult:X8}",
+            sqliteCode=exception is Microsoft.Data.Sqlite.SqliteException sql?sql.SqliteErrorCode:(int?)null,
+            sqliteExtendedCode=exception is Microsoft.Data.Sqlite.SqliteException extended?extended.SqliteExtendedErrorCode:(int?)null,frames });
     }
     public void Event(string operation, string outcome, int attempts = 0) =>
         Write(new { utc = DateTimeOffset.UtcNow, runId, processId = Environment.ProcessId, version = typeof(App).Assembly.GetName().Version?.ToString(), severity = "info",

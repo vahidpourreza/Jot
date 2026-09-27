@@ -10,6 +10,12 @@ internal sealed record ClipboardContent(string text,string html,string? image);
 internal static class ClipboardReader
 {
     private const int Limit=8*1024*1024;
+    internal static async Task<string> ReadTextAsync(ErrorLog log)
+    {
+        await RichClipboard.AccessGate.WaitAsync();
+        try{var text="";await RichClipboard.RetryAsync(()=>text=ReadString(Clipboard.GetData(DataFormats.UnicodeText)),log,operation:"clipboard-read");return text;}
+        finally{RichClipboard.AccessGate.Release();}
+    }
     internal static async Task<ClipboardContent> ReadAsync(ErrorLog log)
     {
         await RichClipboard.AccessGate.WaitAsync();

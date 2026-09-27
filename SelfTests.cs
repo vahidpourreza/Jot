@@ -122,6 +122,7 @@ public partial class MainWindow
         {
             await WaitFor("window.jotReady===true");
             checks.Add(new{name="home-ready",passed=true,elapsedMs=startup.ElapsedMilliseconds});
+            await VerifySqliteStorage(checks);
             await MeasureIndexSmoothness(checks);
             await VerifyIndexReconciliation(checks);
             checks.Add(new{name="normal-launch-opens-index-explicit-tray-flag-stays-quiet",passed=!App.ShouldStartInTray([])&&App.ShouldStartInTray(["--tray"])&&!App.ShouldStartInTray(["--tray","--self-test"])});
@@ -142,6 +143,7 @@ public partial class MainWindow
             var a=session.Windows.First(w=>w.Mode=="note");
             await a.WaitFor("window.jotReady===true");
             var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
+            await VerifyNotePreferences(checks,a,b);
             await VerifyPerformance(checks,a);
             await MeasureWindowAndImageWork(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});
@@ -208,6 +210,7 @@ public partial class MainWindow
             await VerifyFontLimitCursor(checks,a);
             await VerifyBidiWriting(checks,a);
             await VerifyEditorContextMenu(checks,a);
+            await VerifyContextSurfaces(checks,a);
             await VerifyNoteMotion(checks,a);
             await VerifyInactivePinnedChrome(checks,a);
             foreach(var action in new[]{("#copyButton","clipboard-write"),("#exportButton","export")})
@@ -276,7 +279,7 @@ public partial class MainWindow
             foreach(var point in new[]{(rect.Left+9,(rect.Top+rect.Bottom)/2),(rect.Right-10,(rect.Top+rect.Bottom)/2),((rect.Left+rect.Right)/2,rect.Top+9),((rect.Left+rect.Right)/2,rect.Bottom-10)})
             {int packed=((point.Item2&65535)<<16)|(point.Item1&65535);hits.Add((int)SendMessage(a.source.Handle,0x84,0,packed));}
             checks.Add(new{name="resize-hit-zones",passed=hits.SequenceEqual(new[]{10,11,12,15}),actual=hits});
-            await a.Script("setPreference({theme:'light',toolbarVisible:true}).then(()=>window.prefSaved=true)");await a.WaitFor("window.prefSaved===true");
+            await a.Script("setAppTheme('light').then(()=>setPreference({toolbarVisible:true})).then(()=>window.prefSaved=true)");await a.WaitFor("window.prefSaved===true");
             await a.Reload();
             await a.ClickControl("#menuButton");await a.Capture("sticky-menu-light");await a.Script("closePanels()");
             checks.Add(new{name="note-reload-preserves-text-images-color-and-preferences",passed=await a.Script("editor.textContent.includes('Meeting notes')&&!!editor.querySelector('img')&&activeNote().color==='blue'&&model.prefs.theme==='light'&&!document.getElementById('formatBar').hidden")=="true"});
@@ -296,7 +299,8 @@ public partial class MainWindow
                 var bytes=Encoding.UTF8.GetBytes(html);
                 checks.Add(new{name="native-clipboard-utf8-html-fragment",passed=Encoding.UTF8.GetString(bytes,start,end-start)==fragment&&clipboard.GetDataPresent(System.Windows.DataFormats.UnicodeText)});
             }
-            checks.Add(new{name="backup-exists",passed=File.Exists(store.FilePath+".bak")});
+            await store.Backup();
+            checks.Add(new{name="sqlite-backup-exists",passed=File.Exists(store.BackupPath)});
             var imageData=JsonSerializer.Deserialize<string>(await a.Script("editor.querySelector('img').src"))!;
             await VerifyImageControls(checks,imageData);
             await VerifyWindowLifetimes(checks,a,b,imageData);
@@ -334,7 +338,7 @@ public partial class MainWindow
             Directory.CreateDirectory(isolated.Root);
             await File.WriteAllTextAsync(isolated.FilePath,"sentinel-broken-json");
             bool rejected=false;
-            try { await isolated.Load(); } catch(JsonException) { rejected=true; }
+            try { await isolated.Load(); } catch(Microsoft.Data.Sqlite.SqliteException) { rejected=true; }
             checks.Add(new{name="corrupt-store-preserved",passed=rejected&&await File.ReadAllTextAsync(isolated.FilePath)=="sentinel-broken-json"});
             var noteBeforeLanguage=await a.Script("editor.innerHTML");
             await GoToSettings();

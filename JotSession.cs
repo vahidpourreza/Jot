@@ -8,6 +8,7 @@ internal sealed class JotSession(bool testing, string output)
 {
     public bool Testing { get; } = testing;
     public string Output { get; } = output;
+    internal bool PackageSmoke { get; init; }
     public NoteStore Store { get; } = new(testing ? Path.Combine(output, "data") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jot"));
     public ErrorLog Log { get; } = new(testing ? Path.Combine(output, "data") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jot"));
     public List<MainWindow> Windows { get; } = [];
@@ -19,11 +20,11 @@ internal sealed class JotSession(bool testing, string output)
     {
         if(quitting)return;
         JsonElement? data=null;
-        try{data=await Store.Load();}
+        try{data=await Store.LoadPreferences();}
         catch(Exception error){Log.Error("tray-theme",error);}
         if(quitting)return;
         TrayMenu??=new TrayMenuWindow(Testing,ExecuteTrayAction,Log);
-        var prefs=data?.GetProperty("prefs");
+        var prefs=data;
         TrayMenu.ApplyTheme(prefs is { } p&&p.TryGetProperty("theme",out var theme)?theme.GetString()??"dark":"dark");
         TrayMenu.OpenAt(anchor);
     }
@@ -50,14 +51,13 @@ internal sealed class JotSession(bool testing, string output)
     {
         if (environment is not null) return environment;
         var profile = Path.Combine(Store.Root, "webview");
-        if (!Testing && !File.Exists(Store.FilePath))
+        if (!Testing && !File.Exists(Store.LegacyFilePath) && !Directory.Exists(profile))
         {
             var legacy = new[] { Path.Combine(AppContext.BaseDirectory, "Jot.exe.WebView2"),
                 Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "bin", "Release", "net10.0-windows", "win-x64", "publish", "Jot.exe.WebView2")) }.FirstOrDefault(Directory.Exists);
             if (legacy is not null) profile = legacy;
         }
-        return environment = CoreWebView2Environment.CreateAsync(null, profile,
-            Testing ? new CoreWebView2EnvironmentOptions("--disable-backgrounding-occluded-windows") : null);
+        return environment = BrowserRuntime.CreateAsync(profile,Testing);
     }
     public MainWindow Home(bool appearance = false)
     {
@@ -94,19 +94,13 @@ internal sealed class JotSession(bool testing, string output)
     }
     public async Task Changed(bool preferences = true, string? noteId = null)
     {
-        var data = preferences || noteId is not null ? await Store.Load() : null;
+        JsonElement? prefs=preferences?await Store.LoadPreferences():null;
+        if(prefs is not null)UpdateTrayTheme(prefs.Value.GetProperty("theme").GetString()??"dark");
+        var color=noteId is not null?await Store.LoadNoteColor(noteId):null;
         foreach (var window in Windows.ToArray())
         {
-            if (data is not null)
-            {
-                if (preferences) window.Post(new { @event = "preferences", prefs = data.Value.GetProperty("prefs") });
-                if (window.Mode == "note" && (preferences || window.NoteId == noteId))
-                {
-                    var note = data.Value.GetProperty("notes").EnumerateArray().FirstOrDefault(n => n.GetProperty("id").GetString() == window.NoteId);
-                    if (note.ValueKind == JsonValueKind.Object)
-                        window.Post(new { @event = "note-color", color = note.GetProperty("color").GetString() });
-                }
-            }
+            if(prefs is not null)window.Post(new{@event="preferences",prefs=prefs.Value});
+            if(window.Mode=="note"&&window.NoteId==noteId&&color is not null)window.Post(new{@event="note-color",color});
             if (window.Mode == "home") window.Post(new { @event = "notes-changed" });
         }
     }
@@ -121,6 +115,7 @@ internal sealed class JotSession(bool testing, string output)
         try
         {
             await FlushNotes();
+            await Store.Backup();
             TrayMenu?.Close();TrayMenu=null;
             foreach (var window in Windows.ToArray()) window.ClosePermanently();
             System.Windows.Application.Current.Shutdown();

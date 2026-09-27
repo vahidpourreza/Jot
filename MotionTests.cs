@@ -17,7 +17,7 @@ public partial class MainWindow
             await note.WaitFor("pinned===true");
             foreach(var theme in new[]{"dark","light"})
             {
-                await note.Script("setPreference({theme:'"+theme+"'}).then(()=>window.pinnedTheme='"+theme+"')");
+                await note.Script("setAppTheme('"+theme+"').then(()=>window.pinnedTheme='"+theme+"')");
                 await note.WaitFor("window.pinnedTheme==='"+theme+"'");
                 await note.Script("app.dataset.activeWindow='false';editor.focus()");
                 await note.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseMoved\",\"x\":100,\"y\":100}");
@@ -33,7 +33,7 @@ public partial class MainWindow
         }
         finally
         {
-            await note.Script("setPreference({theme:"+JsonSerializer.Serialize(originalTheme)+"}).then(()=>window.pinnedThemeRestored=true);app.dataset.activeWindow="+JsonSerializer.Serialize(originalActive)+";if(pinned!=="+JsonSerializer.Serialize(originalPin)+")document.getElementById('pinButton').click()");
+            await note.Script("setAppTheme("+JsonSerializer.Serialize(originalTheme)+").then(()=>window.pinnedThemeRestored=true);app.dataset.activeWindow="+JsonSerializer.Serialize(originalActive)+";if(pinned!=="+JsonSerializer.Serialize(originalPin)+")document.getElementById('pinButton').click()");
             await note.WaitFor("window.pinnedThemeRestored===true&&pinned==="+JsonSerializer.Serialize(originalPin));
         }
     }

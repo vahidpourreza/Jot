@@ -25,8 +25,9 @@ public partial class MainWindow
             Size=new System.Drawing.Size(480,460),FormBorderStyle=Forms.FormBorderStyle.None,ShowInTaskbar=false,Padding=new Forms.Padding(9)};
         using var browser=new WebView2{Dock=Forms.DockStyle.Fill,DefaultBackgroundColor=System.Drawing.Color.FromArgb(23,23,23)};
         form.Controls.Add(browser);form.Show();
-        var environment=await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null,Path.Combine(testOutput,"direct-probe-profile"),new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions("--disable-backgrounding-occluded-windows"));
+        var environment=await BrowserRuntime.CreateAsync(Path.Combine(testOutput,"direct-probe-profile"),true);
         await browser.EnsureCoreWebView2Async(environment);
+        browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;
         var ready=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var id=Guid.NewGuid().ToString();
         browser.CoreWebView2.NewWindowRequested+=(_,args)=>args.Handled=true;

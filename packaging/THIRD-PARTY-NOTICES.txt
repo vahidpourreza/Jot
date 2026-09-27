@@ -1,0 +1,18 @@
+Jot third-party components
+
+This installer includes .NET/WPF, Microsoft.Data.Sqlite, SQLitePCLRaw,
+SQLite, Microsoft WebView2 SDK components, and a Microsoft Fixed Version
+WebView2 Runtime. Package-provided licenses/notices and metadata are copied
+into the licenses directory. SQLitePCLRaw and Microsoft.Data.Sqlite license
+texts are also included from their corresponding source revisions.
+
+WebView2's original files, embedded Chromium credits, and supplied license
+files are retained. Its vendor-supplied show_third_party_software_licenses.bat
+can display the runtime's embedded third-party credits when run by the user.
+
+Lucide licensing is included under assets/icons/LICENSE. IRANSansX is a
+separately licensed font and is not covered by the open-source licenses of
+the components above; its original font licensing still applies.
+
+This installer is built with Inno Setup; its license is included under
+licenses/inno-setup. This notice does not assign a license to Jot's own code.

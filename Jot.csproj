@@ -5,16 +5,26 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jot</AssemblyName>
     <RootNamespace>Jot</RootNamespace>
-    <Version>1.4.0</Version>
+    <Version>1.6.0</Version>
     <ApplicationIcon>assets\jot.ico</ApplicationIcon>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(JotOfflinePackage)' == 'true'">
+    <DefineConstants>$(DefineConstants);JOT_OFFLINE_PACKAGE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="artifacts\**;test-results\**;recovery\**;dist\**" />
+  </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="index.html" CopyToOutputDirectory="PreserveNewest" />
@@ -22,6 +32,7 @@
     <Content Include="renderer.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="bidi.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="editor-menu.js;tests\context-tests.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="context-menus.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="home.html;home.js;image.html;image.js;shared.js;design-tokens.js;workspace.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="i18n.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="settings.html;settings.js" CopyToOutputDirectory="PreserveNewest" />

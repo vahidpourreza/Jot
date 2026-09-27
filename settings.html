@@ -2,18 +2,18 @@
 <header id="settingsHandle" class="settings-header"><span class="jot-logo" data-icon="jot"></span><div><h1>Settings</h1></div><button id="settingsBack" class="settings-back-button" title="Back to notes"><span data-icon="chevron-left"></span><span>Back to notes</span></button></header>
   <section id="appearance" class="appearance">
     <section class="settings-section"><h2>General</h2><div class="settings-card">
-    <div class="settings-row"><div><h2>Theme</h2><p>For all Jot windows</p></div><div class="segmented"><button data-theme-choice="light">Light</button><button data-theme-choice="dark">Dark</button></div></div>
+    <div class="settings-row"><div><h2>App theme</h2><p>Light or dark across all notes, image windows, and the rest of Jot.</p></div><div class="segmented"><button data-theme-choice="light">Light</button><button data-theme-choice="dark">Dark</button></div></div>
     <div class="settings-row"><div><h2>Tray icon</h2><p>Drag Jot beside the clock to keep it visible. Windows controls the overflow area.</p></div><button id="trayVisibility" class="secondary-button" title="Open Windows Taskbar settings">Windows settings…</button></div>
     </div></section>
     <section class="settings-section"><h2>Appearance</h2><div class="settings-card">
     <div class="settings-block"><h2>Note colors</h2><p>Choose a header color in each note’s More menu. The rest of Jot stays neutral.</p></div>
     <div class="settings-row"><div><h2>Icon weight</h2></div><div class="segmented"><button data-weight="1.5">Fine</button><button data-weight="1.8">Regular</button><button data-weight="2.4">Bold</button></div></div>
     </div></section>
-    <section class="settings-section"><h2>Writing</h2><div class="settings-card">
+    <section class="settings-section"><h2>New note defaults</h2><div class="settings-card">
     <div class="settings-row"><div><h2>Text size</h2></div><div class="font-setting" dir="ltr"><button id="homeSmaller" class="icon-button">−</button><output id="homeFontSize">16</output><button id="homeLarger" class="icon-button">+</button></div></div>
-    <div class="settings-row"><div><h2>Line height</h2><p>Spacing between lines in all notes</p></div><div class="font-setting" dir="ltr"><button id="homeTighterLines" class="icon-button" aria-label="Decrease line height">−</button><output id="homeLineHeight">1.95×</output><button id="homeLooserLines" class="icon-button" aria-label="Increase line height">+</button></div></div>
+    <div class="settings-row"><div><h2>Line height</h2><p>Initial spacing for new notes. Existing notes stay unchanged.</p></div><div class="font-setting" dir="ltr"><button id="homeTighterLines" class="icon-button" aria-label="Decrease line height">−</button><output id="homeLineHeight">1.95×</output><button id="homeLooserLines" class="icon-button" aria-label="Increase line height">+</button></div></div>
     <div class="settings-row"><div><h2>Writing toolbar</h2><p>Visible by default; hide it when you want</p></div><button id="toolbarVisible" class="switch" role="switch" aria-checked="true" aria-label="Show writing tools"><span></span></button></div>
     </div></section>
   </section>
 <footer class="home-footer"><span id="homeStatus">Saved locally · on this device</span><button id="settingsQuit" class="app-quit-button" type="button" title="Save notes and quit the app" aria-busy="false"><span class="quit-icon" data-icon="power"></span><span class="quit-spinner" aria-hidden="true"></span><span class="quit-idle">Quit Jot</span><span class="quit-pending">Closing…</span></button></footer><p id="homeError" class="error" hidden role="alert"></p>
-</main><script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="settings.js"></script></body></html>
+</main><script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="context-menus.js"></script><script src="settings.js"></script></body></html>

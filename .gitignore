@@ -4,10 +4,12 @@ dist/
 node_modules/
 test-results/
 recovery/
+artifacts/
 *.WebView2/
 logs/
 data/
 notes.json*
+jot.db*
 startup-error.txt
 .vs/
 *.user

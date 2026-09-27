@@ -182,7 +182,7 @@ public partial class MainWindow : Window
             var core = Browser.CoreWebView2;
             webView = core;
             core.Settings.AreDevToolsEnabled = testing;
-            core.Settings.AreDefaultContextMenusEnabled = Mode!="note";
+            core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreBrowserAcceleratorKeysEnabled = false;
@@ -202,6 +202,7 @@ public partial class MainWindow : Window
                 if (closingPermanently) return;
                 if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); RevealReadyContent(); return; }
                 if (runTests) await RunSelfTests();
+                else if(testing&&session.PackageSmoke&&Mode=="home")await RunPackageSmoke();
                 else if (!testing && Mode == "home" && hotkeyUnavailable)
                 {
                     await Task.Delay(800);
@@ -274,21 +275,18 @@ public partial class MainWindow : Window
                 case "index-load": result = await store.LoadIndex(); break;
                 case "note-load":
                     if (Mode != "note") throw new InvalidOperationException("Only a note window can load its editor.");
-                    var stored = await store.Load() ?? throw new InvalidDataException("Note not found.");
-                    var ownNote = stored.GetProperty("notes").EnumerateArray().FirstOrDefault(n => n.GetProperty("id").GetString() == NoteId);
-                    if (ownNote.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Note not found.");
+                    var ownNote = await store.LoadNote(NoteId!) ?? throw new InvalidDataException("Note not found.");
                     result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing },
-                        model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = stored.GetProperty("prefs") } };
+                        model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = await store.LoadPreferences() } };
                     break;
                 case "editor-ready": case "editor-failed": RevealReadyContent(); break;
-                case "preferences-load": result = (await store.Load())?.GetProperty("prefs") ?? JsonSerializer.SerializeToElement(NoteStore.Defaults()); break;
+                case "preferences-load": result = await store.LoadPreferences(); break;
                 case "import": await store.Import(payload); break;
                 case "new-note": result = (await session.NewNote()).NoteId; break;
                 case "open-note":
                     var noteId = payload.GetString()!;
                     if (!Guid.TryParse(noteId, out _)) throw new InvalidDataException("یادداشت معتبر نیست.");
-                    var data = await store.Load();
-                    if (data is null || !data.Value.GetProperty("notes").EnumerateArray().Any(note => note.GetProperty("id").GetString() == noteId))
+                    if (!await store.Contains(noteId))
                         throw new InvalidDataException("یادداشت پیدا نشد.");
                     session.OpenNote(noteId); break;
                 case "home": session.Home(payload.ValueKind == JsonValueKind.True); break;
@@ -309,10 +307,19 @@ public partial class MainWindow : Window
                 case "save":
                     if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
                     await store.SaveNote(payload); await session.Changed(preferences: false); result = true; break;
-                case "preferences": result = (await store.SavePreferences(payload)).GetProperty("prefs"); await session.Changed(); break;
+                case "preferences":
+                    if(Mode!="home")throw new InvalidOperationException("Change app defaults from Settings, not a note window.");
+                    result = (await store.SavePreferences(payload)).GetProperty("prefs"); await session.Changed(); break;
+                case "app-theme":
+                    if(Mode!="note")throw new InvalidOperationException("Use Settings to change the app theme.");
+                    result=(await store.SavePreferences(JsonSerializer.SerializeToElement(new{theme=payload.GetString()}))).GetProperty("prefs");
+                    await session.Changed();break;
+                case "note-preferences":
+                    if(Mode!="note"||payload.GetProperty("id").GetString()!=NoteId)throw new InvalidDataException("Change a note's settings from its own window.");
+                    result=await store.SaveNotePreferences(NoteId!,payload.GetProperty("settings"));break;
                 case "theme":
                     bool light = payload.GetProperty("mode").GetString() == "light";
-                    session.UpdateTrayTheme(light?"light":"dark");
+                    if(Mode=="home")session.UpdateTrayTheme(light?"light":"dark");
                     Surface.Background = new SolidColorBrush(light ? Colors.White : Color.FromRgb(23,23,23));
                     Browser.DefaultBackgroundColor = light ? System.Drawing.Color.White : System.Drawing.Color.FromArgb(23,23,23);
                     UpdateNativeIcon();
@@ -347,6 +354,7 @@ public partial class MainWindow : Window
                 case "clipboard-read":
                     if(Mode!="note")throw new InvalidOperationException("Paste is available only in a note editor.");
                     result=testing?TestClipboardContent:await ClipboardReader.ReadAsync(session.Log);break;
+                case "clipboard-read-text": result=testing?TestClipboardContent.text:await ClipboardReader.ReadTextAsync(session.Log);break;
                 case "clipboard-text":
                     if (!testing)
                     {
@@ -377,6 +385,12 @@ public partial class MainWindow : Window
             session.Log.Error(action, ex, Mode);
             var busy = RichClipboard.IsBusy(ex);
             var message = busy ? "کلیپ‌بورد موقتاً مشغول است. دوباره کپی کنید؛ یادداشت شما محفوظ است." : ex.Message;
+            if(ex is Microsoft.Data.Sqlite.SqliteException sqlite)message=sqlite.SqliteErrorCode switch{
+                5 or 6=>"The notes database is busy. Try saving again; your draft is still in this window.",
+                11 or 26=>"Jot could not read its database. Your files were left untouched; restore a verified backup.",
+                13=>"There is not enough disk space to save. Your draft is still in this window.",
+                _=>"The database operation failed. Your draft is still in this window; see the local error log."
+            };
             if (id > 0 && !closingPermanently && messageSource == pageUri)
                 Post(new { id, ok = false, error = message, operation = action, code = busy ? "clipboard-busy" : "operation-failed", logged = true });
         }

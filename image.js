@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id),request=JotBridge.request;
 const stage=$('imageStage'),canvas=$('imageCanvas'),fullImage=$('fullImage');
-let zoom=1,fitMode=true,fullscreen=false,fullscreenBusy=false,drag=null,resizeFrame=0;
+let zoom=1,fitMode=true,fullscreen=false,fullscreenBusy=false,drag=null,resizeFrame=0,copyStatusTimer=0;
 function error(e){JotBridge.reportError(e,'image');$('imageError').textContent=JotI18n.text(e.message);$('imageError').hidden=false;}
 function layout(){
   if(!fullImage.naturalWidth)return;
@@ -30,7 +30,35 @@ async function setFullscreen(value=!fullscreen){
 $('fitButton').onclick=()=>fit(true);$('actualButton').onclick=()=>fit(false);
 $('zoomIn').onclick=()=>setZoom(zoom*1.25);$('zoomOut').onclick=()=>setZoom(zoom/1.25);
 $('imageFullscreen').onclick=()=>setFullscreen();$('imageClose').onclick=()=>request('hide').catch(error);
-$('imageCopy').onclick=async()=>{const b=$('imageCopy'),label=$('imageDimensions'),previous=label.textContent;b.disabled=true;b.ariaBusy='true';b.title='Copying original…';label.textContent='Copying original…';try{if(await request('clipboard-write',{html:'<img src="'+fullImage.src+'">',text:'',image:fullImage.src})===false)throw new Error('Copy was interrupted. Please try again.');}catch(e){error(e);}finally{b.disabled=false;b.removeAttribute('aria-busy');b.title='Copy original image';label.textContent=previous;}};
+async function copyImage(){
+  const b=$('imageCopy'),status=$('imageCopyStatus');if(b.disabled)return;
+  clearTimeout(copyStatusTimer);b.disabled=true;b.ariaBusy='true';b.title='Copying original…';status.textContent='Copying original…';status.hidden=false;
+  try{
+    if(await request('clipboard-write',{html:'<img src="'+fullImage.src+'">',text:'',image:fullImage.src})===false)throw new Error('Copy was interrupted. Please try again.');
+    status.textContent='Copied';copyStatusTimer=setTimeout(()=>status.hidden=true,1100);
+  }catch(e){status.hidden=true;error(e);}
+  finally{b.disabled=false;b.removeAttribute('aria-busy');b.title='Copy original image';}
+}
+$('imageCopy').onclick=copyImage;
+function openImageMenu(x,y){
+  JotMenus.open({x,y,owner:stage,restore:()=>stage.focus({preventScroll:true}),error,items:[
+    {id:'copy',label:'Copy image',icon:'copy',disabled:$('imageCopy').disabled,pending:'Copying…'},
+    {separator:true},{id:'zoom-in',label:'Zoom in',icon:'plus',shortcut:'+',disabled:zoom>=8},
+    {id:'zoom-out',label:'Zoom out',icon:'minus',shortcut:'−',disabled:zoom<=.1},
+    {id:'fit',label:'Fit to window',icon:'scan',shortcut:'0'},
+    {id:'actual',label:'100%',icon:'scan',shortcut:'1'},
+    {separator:true},{id:'fullscreen',label:fullscreen?'Exit fullscreen':'Fullscreen',icon:fullscreen?'minimize':'maximize',shortcut:'F11'}
+  ],async run(action){
+    if(action==='copy')await copyImage();
+    else if(action==='zoom-in')setZoom(zoom*1.25);
+    else if(action==='zoom-out')setZoom(zoom/1.25);
+    else if(action==='fit')fit(true);else if(action==='actual')fit(false);
+    else if(action==='fullscreen')await setFullscreen();
+  }});
+}
+stage.tabIndex=0;stage.setAttribute('aria-label','Image view');
+fullImage.addEventListener('contextmenu',event=>{event.preventDefault();openImageMenu(event.clientX,event.clientY);});
+stage.addEventListener('keydown',event=>{if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();event.stopPropagation();const r=stage.getBoundingClientRect();openImageMenu(r.left+16,r.top+16);}});
 stage.addEventListener('wheel',e=>{e.preventDefault();const r=stage.getBoundingClientRect();setZoom(zoom*Math.exp(-Math.sign(e.deltaY)*.16),e.clientX-r.left,e.clientY-r.top);},{passive:false});
 stage.addEventListener('dblclick',()=>fit(!fitMode));
 stage.addEventListener('pointerdown',e=>{if(e.button!==0||stage.dataset.pannable!=='true')return;e.preventDefault();drag={x:e.clientX,y:e.clientY,left:stage.scrollLeft,top:stage.scrollTop};stage.setPointerCapture(e.pointerId);stage.dataset.dragging='true';});
