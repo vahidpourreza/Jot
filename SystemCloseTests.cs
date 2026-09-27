@@ -13,6 +13,15 @@ public partial class MainWindow
         if(!testing||!session.ExitProbe)throw new InvalidOperationException("Exit probes require isolated test mode.");
         Directory.CreateDirectory(testOutput);
         int index=Array.IndexOf(args,"--probe-scenario");var scenario=index>=0&&index+1<args.Length?args[index+1]:"";
+        if(scenario=="close-last")
+        {
+            var checks=new List<object>();await VerifyLastWindowClose(checks);await VerifySystemCloseProcesses(checks);
+            var json=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});await File.WriteAllTextAsync(Path.Combine(testOutput,"close-last-results.json"),json);
+            using var report=JsonDocument.Parse(json);bool passed=report.RootElement.EnumerateArray().All(c=>c.GetProperty("passed").GetBoolean());
+            ClosePermanently();System.Windows.Application.Current.Shutdown(passed?0:1);return;
+        }
+        if(scenario is "last-note" or "last-home" or "last-settings" or "last-image" or "last-delete")
+        {await RunLastCloseProbe(scenario);return;}
         if(scenario is "note-fullscreen" or "note-motion")
         {
             var checks=new List<object>();await VerifyNoteTools(checks);await VerifyNoteFullscreen(checks);
@@ -43,6 +52,7 @@ public partial class MainWindow
         foreach(var n in new[]{a,b})await n.Script("editor.innerHTML='<p>Final process draft فارسی English '+model.activeId+'</p>';onEdit();clearTimeout(saveTimer)");
         if(scenario is "home-only" or "one-hidden")
         {
+            if(scenario=="home-only"){var home=session.Home();await home.WaitFor("window.jotReady===true");}
             await a.ClickControl("#hideButton");await WaitHidden(a);
             if(scenario=="home-only"){await b.ClickControl("#hideButton");await WaitHidden(b);}
         }
@@ -84,7 +94,7 @@ public partial class MainWindow
             if(child.ExitCode!=0)throw new IOException("Isolated exit probe failed: "+scenario+". See its probe-error.txt.");
             return child.Id;
         }
-        foreach(var scenario in new[]{"quit","taskbar","wm-close","home-only","one-hidden","notes-only"})
+        foreach(var scenario in new[]{"quit","taskbar","wm-close","home-only","one-hidden","notes-only","last-note","last-home","last-settings","last-image","last-delete"})
         {
             var path=Path.Combine(testOutput,"system-close",scenario);Directory.CreateDirectory(path);
             int firstPid=await Run(path,scenario);
@@ -93,6 +103,8 @@ public partial class MainWindow
             checks.Add(new{name="process-exit-"+scenario+"-really-terminates-with-no-windows",passed=exited.RootElement.GetProperty("processId").GetInt32()==firstPid&&exited.RootElement.GetProperty("exitCode").GetInt32()==0&&exited.RootElement.GetProperty("remainingWindows").GetInt32()==0&&expected.RootElement.GetProperty("offscreen").GetBoolean()});
             var ids=expected.RootElement.GetProperty("expected").EnumerateArray().Select(n=>n.GetString()!).ToHashSet();
             var store=new NoteStore(Path.Combine(path,"data"));
+            if(expected.RootElement.TryGetProperty("deletedId",out var deletedId)&&deletedId.ValueKind==JsonValueKind.String)
+                checks.Add(new{name="process-exit-last-delete-does-not-resurrect-note",passed=!await store.Contains(deletedId.GetString()!)});
             checks.Add(new{name="process-exit-"+scenario+"-preserves-pre-close-note-set",passed=(await store.LoadWindowSession()).Select(w=>w.NoteId).ToHashSet().SetEquals(ids)});
             foreach(var id in expected.RootElement.GetProperty("originalIds").EnumerateArray().Select(n=>n.GetString()!))
                 checks.Add(new{name="process-exit-"+scenario+"-flushes-last-draft-"+id,passed=(await store.LoadNote(id))!.Value.GetProperty("plain").GetString()!.Contains("Final process draft فارسی English "+id)});

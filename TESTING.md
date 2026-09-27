@@ -2,6 +2,16 @@
 
 ## Current development build (v1.6.0)
 
+`dist/Jot-dev-last-close-final/Jot.exe` passed **87/87 focused close/exit checks** in `test-results/last-close-final-01/close-last-results.json`. Release publish, `node --check image.js` and `git diff --check` passed. No commit was made.
+
+The broader run in `test-results/last-close-full-02/results.json` passed **797/798** checks. The remaining failure was `format-bold-italic-underline-color` (the text-color indicator assertion); formatting production code was not changed in this task. That full run preceded only the final image-viewer warning handler and its focused recovery checks. An earlier run also had 797/798, failing the inactive light-theme Pin check before its transition settled. Its captured image had the correct hidden icons; the test now waits for header transitions rather than a fixed delay and passed in the second full run. The broad suite is therefore not reported as fully green.
+
+Closing the last app window now saves and quits rather than leaving a tray-only process. Invisible tray hosts and cached closed notes do not count; minimized notes/Home keep the app running. The checks include new-note/reopen races, parallel closes, pending image completion, failed session-save recovery and retry, image-viewer shutdown failure/retry with a visible error, and an empty restored-window session after closing everything individually.
+
+Eleven isolated two-process scenarios cover explicit Quit, taskbar/system close, plus closing the last note, Home, Settings, image viewer and deleting the last note. Each verifies actual process exit with zero windows, final saved content, and a fresh-process relaunch. The five last-window scenarios reopen one blank note without Home; deleted notes are not resurrected. Evidence is under `test-results/last-close-final-01/system-close/`. No user window, clipboard, tray or profile was touched; no installer was built.
+
+## Previous context-menu Home build
+
 `dist/Jot-dev-context-home/Jot.exe` passed **89/89 focused offscreen checks** in `test-results/context-home-01/note-fullscreen-results.json`. New Home-menu checks cover its standard icon/no shortcut, keyboard access and small-menu scrolling, actual button activation, saving the latest draft, reusing Settings as Home without extra windows, keeping the note open, and empty-note/image context availability. Existing direction and fullscreen/drag checks also passed. Release publish, JavaScript syntax checks and `git diff --check` passed. The broad self-test suite was not rerun. No live window was touched, and no installer or commit was made.
 
 ## Previous instant-fullscreen build

@@ -268,13 +268,30 @@ public partial class MainWindow : Window
         try
         {
             await Flush(true);
-            if(!closingPermanently&&HideRequested&&(forceNativeHide||!testing||session.ExerciseLifecycle||session.ExitProbe))Hide();
+            if(!closingPermanently&&HideRequested&&(forceNativeHide||!testing||session.ExerciseLifecycle||session.ExitProbe))
+            {
+                Hide();
+                await session.QuitIfNoOpenWindows();
+                if(Mode=="image"&&!closingPermanently)ClosePermanently();
+            }
             if(testing&&!session.ExerciseLifecycle&&!session.ExitProbe&&!forceNativeHide){HideRequested=false;Post(new{@event="resume-editing"});}
         }
-        catch{HideRequested=false;Post(new{@event="resume-editing"});throw;}
+        catch{HideRequested=false;if(!closingPermanently&&!IsVisible)Reveal();Post(new{@event="resume-editing"});throw;}
         finally{forceNativeHide=false;}
     }
     internal void ClosePermanently() { if (closingPermanently) return; allowClose = true; Close(); }
+    private async void CloseImageFromUi()
+    {
+        try{await HideAfterSaving(true);}
+        catch(Exception error){session.Log.Error("close-image",error);Post(new{@event="warning",message="Could not finish saving. Jot is still open; try closing again."});}
+    }
+    private async void CloseDeletedNote()
+    {
+        // Deleted editors must be disposed before Quit flushes other notes.
+        ClosePermanently();
+        try{await session.QuitIfNoOpenWindows();}
+        catch(Exception error){session.Log.Error("close-deleted-note",error);session.Home().Post(new{@event="warning",message="The note was deleted, but Jot could not finish saving its session. Please try Quit again."});}
+    }
 
     private async void OnWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -327,8 +344,8 @@ public partial class MainWindow : Window
                     try { await session.Changed(preferences: false); }
                     catch (Exception ex) { session.Log.Error("delete-notification", ex, Mode); }
                     result = true;
-                    // Reply before disposing this WebView. No other window is revealed or closed.
-                    _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
+                    // Reply before disposal, then check whether the final app window closed.
+                    _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, CloseDeletedNote);
                     break;
                 case "save":
                     if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
@@ -361,7 +378,7 @@ public partial class MainWindow : Window
                 case "note-fullscreen":
                     result=await SetNoteFullscreen(payload.ValueKind==JsonValueKind.Object?payload.GetProperty("enabled").GetBoolean():payload.GetBoolean());break;
                 case "hide":
-                    if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
+                    if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, CloseImageFromUi);
                     else await HideAfterSaving();
                     break;
                 case "minimize":

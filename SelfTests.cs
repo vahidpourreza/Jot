@@ -125,6 +125,7 @@ public partial class MainWindow
             await VerifySqliteStorage(checks);
             await VerifySessionRestore(checks);
             await VerifyLifecycleScenarios(checks);
+            await VerifyLastWindowClose(checks);
             await VerifySystemCloseProcesses(checks);
             await MeasureIndexSmoothness(checks);
             await VerifyIndexReconciliation(checks);
@@ -353,7 +354,7 @@ public partial class MainWindow
             checks.Add(new{name="english-ui-still-supports-persian-and-english",passed=await a.Script("getComputedStyle(editor.querySelector('p')).direction==='ltr'&&[...editor.querySelectorAll('p')].some(p=>getComputedStyle(p).direction==='rtl')")=="true"});
             await settings.Capture("settings-english");
             await GoToIndex();await Capture("index-english");
-            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').getAttribute('aria-label')==='New note'&&document.getElementById('homeClose').getAttribute('aria-label')==='Close to tray'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
+            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').getAttribute('aria-label')==='New note'&&document.getElementById('homeClose').getAttribute('aria-label')==='Close window'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
             await GoToSettings();
             await settings.Script("preference({language:'fa'}).then(()=>window.legacyLanguageChecked=true)");
             await settings.WaitFor("window.legacyLanguageChecked===true");

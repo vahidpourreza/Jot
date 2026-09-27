@@ -66,7 +66,7 @@ stage.addEventListener('pointermove',e=>{if(drag){stage.scrollLeft=drag.left+dra
 function endDrag(){drag=null;stage.dataset.dragging='false';}
 stage.addEventListener('pointerup',endDrag);stage.addEventListener('lostpointercapture',endDrag);stage.addEventListener('pointercancel',endDrag);
 new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(layout);}).observe(stage);
-JotBridge.on(data=>{if(data.event==='preferences')JotDesign.apply(data.prefs);if(data.event==='clipboard-success')$('imageError').hidden=true;});
+JotBridge.on(data=>{if(data.event==='preferences')JotDesign.apply(data.prefs);if(data.event==='clipboard-success')$('imageError').hidden=true;if(data.event==='warning')error(Object.assign(new Error(data.message),{logged:true}));});
 (async()=>{
   JotDesign.icons();JotDesign.drag($('imageHandle'));const context=await request('context');JotDesign.apply(await request('preferences-load'));
   fullImage.onload=()=>{$('imageDimensions').textContent=fullImage.naturalWidth+' × '+fullImage.naturalHeight+' · Scroll to zoom · Drag to pan';layout();window.jotReady=true;};

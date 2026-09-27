@@ -60,6 +60,7 @@ internal sealed class JotSession(bool testing, string output)
     }
     public MainWindow Home(bool appearance = false)
     {
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
         if (appearance) return Settings();
         var window = Windows.FirstOrDefault(window => window.Mode == "home") ?? new MainWindow(this, "home");
         window.ShowHomeView(false);
@@ -68,6 +69,7 @@ internal sealed class JotSession(bool testing, string output)
     }
     public MainWindow Settings()
     {
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
         var window = Windows.FirstOrDefault(window => window.Mode == "home") ?? new MainWindow(this, "home");
         window.ShowHomeView(true);
         window.Reveal();
@@ -126,6 +128,7 @@ internal sealed class JotSession(bool testing, string output)
     }
     public MainWindow Image(string src)
     {
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
         var window = new MainWindow(this, "image") { ImageSource = src };
         window.Reveal();
         return window;
@@ -145,6 +148,19 @@ internal sealed class JotSession(bool testing, string output)
     internal async Task FlushNotes()
     {
         foreach (var window in Windows.Where(window => window.Mode == "note").ToArray()) await window.Flush(quitting);
+    }
+    internal async Task QuitIfNoOpenWindows()
+    {
+        // A hidden tray host/cached note is not an open app window. Minimized
+        // windows remain IsVisible and must keep the app alive.
+        if(Testing&&!ExerciseLifecycle&&!ExitProbe)return;
+        if(quitting||Windows.Any(window=>window.IsVisible))return;
+        // A New note accepted before the close must finish before deciding
+        // whether there is anything left. Re-check after every async boundary.
+        if(startingWork is {IsCompleted:false})await startingWork;
+        if(openingNotes.Count>0)await Task.WhenAll(openingNotes.ToArray());
+        if(quitting||Windows.Any(window=>window.IsVisible))return;
+        await Quit();
     }
     public Task Quit()
     {

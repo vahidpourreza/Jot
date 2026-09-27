@@ -11,15 +11,16 @@ public partial class MainWindow
         async Task Until(Func<bool> condition){for(int i=0;i<240;i++){if(condition())return;await Task.Delay(50);}throw new TimeoutException("Lifecycle scenario did not finish.");}
         JotSession Create(string path){var s=new JotSession(true,path){ExerciseLifecycle=true};new MainWindow(s,"home").StartInTray();return s;}
         void Cleanup(JotSession s){s.TrayMenu?.Close();foreach(var w in s.Windows.ToArray())w.ClosePermanently();}
-        foreach(var kind in new[]{"home-and-notes","settings-and-notes","notes-only","home-only","tray-only","one-closed","reopened","native-close","minimized-note"})
+        foreach(var kind in new[]{"home-and-notes","settings-and-notes","notes-only","home-only","last-note-closed","one-closed","reopened","native-close","minimized-note"})
         {
             var path=Path.Combine(testOutput,"close-matrix",kind);var s=Create(path);JotSession? restart=null;
             try
             {
                 await s.StartWork();var a=s.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");
-                var notes=new List<MainWindow>{a};if(kind is not ("home-only" or "tray-only" or "reopened" or "minimized-note")){var b=await s.NewNote();notes.Add(b);await b.WaitFor("window.jotReady===true");}
+                var notes=new List<MainWindow>{a};if(kind is not ("home-only" or "last-note-closed" or "reopened" or "minimized-note")){var b=await s.NewNote();notes.Add(b);await b.WaitFor("window.jotReady===true");}
                 foreach(var n in notes)await n.Script("editor.innerHTML='<p>Final draft فارسی English '+model.activeId+'</p>';onEdit();clearTimeout(saveTimer)");
-                if(kind is "home-only" or "tray-only" or "one-closed" or "reopened")
+                if(kind is "home-only" or "reopened"){var h=s.Home();await h.WaitFor("window.jotReady===true");}
+                if(kind is "home-only" or "last-note-closed" or "one-closed" or "reopened")
                 {
                     await a.ClickControl("#hideButton");await Until(()=>!a.IsVisible);
                     Check(kind+"-x-really-hides-and-saves",(await s.Store.LoadNote(a.NoteId!))!.Value.GetProperty("plain").GetString()!.Contains("Final draft"));
@@ -34,6 +35,7 @@ public partial class MainWindow
                     var settings=s.Settings();await settings.WaitFor("window.jotReady===true&&!!document.getElementById('settingsQuit')");
                     await settings.ClickControl("#settingsQuit");await Until(()=>s.Windows.Count==0);
                 }
+                else if(kind=="last-note-closed")await Until(()=>s.Windows.Count==0);
                 else await s.ExecuteTrayAction("quit");
                 Check(kind+"-real-quit-closes-all-own-windows",s.Windows.Count==0);
                 foreach(var n in notes)Check(kind+"-complete-last-text-"+n.NoteId,(await s.Store.LoadNote(n.NoteId!))!.Value.GetProperty("plain").GetString()!.Contains("Final draft فارسی English "+n.NoteId));
