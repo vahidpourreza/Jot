@@ -78,7 +78,7 @@ public partial class MainWindow
     private async Task GoToIndex()
     {
         await ClickControl("#settingsBack");
-        await WaitFor("window.jotReady===true&&document.getElementById('homeSearch')!==null");
+        await WaitFor("window.jotReady===true&&document.getElementById('cards')!==null");
     }
     private async Task VerifyFontLimitCursor(List<object> checks,MainWindow note)
     {
@@ -123,9 +123,12 @@ public partial class MainWindow
             await WaitFor("window.jotReady===true");
             checks.Add(new{name="home-ready",passed=true,elapsedMs=startup.ElapsedMilliseconds});
             await VerifySqliteStorage(checks);
+            await VerifySessionRestore(checks);
+            await VerifyLifecycleScenarios(checks);
+            await VerifySystemCloseProcesses(checks);
             await MeasureIndexSmoothness(checks);
             await VerifyIndexReconciliation(checks);
-            checks.Add(new{name="normal-launch-opens-index-explicit-tray-flag-stays-quiet",passed=!App.ShouldStartInTray([])&&App.ShouldStartInTray(["--tray"])&&!App.ShouldStartInTray(["--tray","--self-test"])});
+            checks.Add(new{name="explicit-tray-flag-only-used-for-quiet-start",passed=!App.ShouldStartInTray([])&&App.ShouldStartInTray(["--tray"])&&!App.ShouldStartInTray(["--tray","--self-test"])});
             CaptureCornerMask(checks);
             var dormant=new MainWindow(session,"home");
             dormant.StartInTray();
@@ -166,15 +169,15 @@ public partial class MainWindow
             var state=(await store.Load())!.Value;
             checks.Add(new{name="concurrent-editors-preserve-both-notes",passed=state.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==a.NoteId&&n.GetProperty("plain").GetString()!.Contains("Note A"))&&state.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==b.NoteId&&n.GetProperty("plain").GetString()!.Contains("Note B"))});
             await WaitFor("homeData.notes.length>=2");
+            await store.SaveMetadata(JsonSerializer.SerializeToElement(new{id=a.NoteId,group="Work"}));
             await ClickControl("[data-note-id='"+a.NoteId+"'] .card-edit");
-            await Script("document.getElementById('noteTitleInput').value='Sprint ideas';document.getElementById('noteGroupInput').value='Work';document.getElementById('metadataForm').requestSubmit()");
+            await Script("document.getElementById('noteTitleInput').value='Sprint ideas';document.getElementById('metadataForm').requestSubmit()");
             await WaitFor("homeData.notes.some(n=>n.title==='Sprint ideas'&&n.group==='Work')");
             await a.Script("editor.innerHTML='<p>Note A — فارسی revised</p>';onEdit();saveNow().then(()=>window.metaSaved=true)");
             await a.WaitFor("window.metaSaved===true");
             var metadataState=(await store.Load())!.Value.GetProperty("notes").EnumerateArray().First(n=>n.GetProperty("id").GetString()==a.NoteId);
             checks.Add(new{name="title-group-survive-editor-save",passed=metadataState.GetProperty("title").GetString()=="Sprint ideas"&&metadataState.GetProperty("group").GetString()=="Work"});
-            await ClickControl("[data-group='Work']");
-            checks.Add(new{name="group-filter",passed=await Script("document.querySelectorAll('.note-card').length===1")=="true"});
+            checks.Add(new{name="index-has-no-search-or-group-controls",passed=await Script("!document.querySelector('#homeSearch,#groupFilters,#noteGroupInput,.card-group')&&document.querySelectorAll('.note-card').length>=2")=="true"});
             var rootHandle=source!.Handle;
             var windowCount=session.Windows.Count;
             await GoToSettings();
@@ -185,8 +188,7 @@ public partial class MainWindow
             await b.ClickControl("#menuButton");
             await b.ClickControl("[data-note-color='rose']");
             await b.WaitFor("activeNote().color==='rose'");await b.Script("closePanels()");
-            await settings.ClickControl("[data-weight='2.4']");
-            await a.WaitFor("model.prefs.iconWeight===2.4");
+            checks.Add(new{name="global-settings-only-expose-theme",passed=await settings.Script("!document.querySelector('[data-weight],#toolbarVisible,#homeFontSize,#homeLineHeight,#trayVisibility')&&document.querySelectorAll('[data-theme-choice]').length===2")=="true"});
             for(int i=0;i<100&&(a.NativeIconKey==""||a.NativeIconKey!=NativeIconKey);i++)await Task.Delay(30);
             checks.Add(new{name="tray-icons-adapt-monochrome-independently-of-colored-app-icon",passed=a.NativeIconKey==NativeIconKey&&b.NativeIconKey==NativeIconKey&&NativeIconKey.StartsWith("monochrome-")});
             checks.Add(new{name="neutral-application-with-independent-note-colors",passed=await b.Script("document.documentElement.dataset.color==='neutral'&&document.documentElement.dataset.coloredIcons==='false'&&app.dataset.noteColor==='rose'")=="true"&&await a.Script("app.dataset.noteColor==='blue'")=="true"});
@@ -195,10 +197,9 @@ public partial class MainWindow
             await settings.Capture("settings-neutral");
             settings.RenderWindowSurface("composed-window");
             await GoToIndex();
-            checks.Add(new{name="back-restores-index-group",passed=!IsSettingsView&&source.Handle==rootHandle&&await Script("currentGroup==='Work'&&document.querySelectorAll('.note-card').length===1")=="true"});
-            await ClickControl("[data-group='*']");
+            checks.Add(new{name="back-restores-unfiltered-index",passed=!IsSettingsView&&source.Handle==rootHandle&&await Script("document.querySelectorAll('.note-card').length===homeData.notes.length")=="true"});
             checks.Add(new{name="index-has-no-promotional-heading",passed=await Script("document.querySelector('.index-heading,.index-eyebrow')===null")=="true"});
-            checks.Add(new{name="grouping-action-visible",passed=await Script("[...document.querySelectorAll('.card-edit')].every(button=>button.textContent.includes('Title and group'))")=="true"});
+            checks.Add(new{name="rename-action-visible-without-grouping",passed=await Script("[...document.querySelectorAll('.card-edit')].every(button=>button.getAttribute('aria-label')==='Rename note')")=="true"});
             await a.Script("editor.innerHTML='<p>Notes list saves the latest draft</p>';onEdit();clearTimeout(saveTimer)");
             await a.ClickControl("#menuButton");await a.ClickControl("#menuNotesButton");
             await WaitFor("homeData.notes.some(n=>n.plain.includes('Notes list saves the latest draft'))");
@@ -287,8 +288,8 @@ public partial class MainWindow
             checks.Add(new{name="other-note-still-intact-after-all-operations",passed=await b.Script("editor.textContent.includes('Note B')&&activeNote().color==='rose'")=="true"});
             await WaitFor("homeData.notes.length>=2");
             await Capture("home");
-            await Script("document.getElementById('homeSearch').value='Note B';renderCards()");
-            checks.Add(new{name="home-search-finds-note",passed=await Script("document.querySelectorAll('.note-card').length===1")=="true"});
+            checks.Add(new{name="simple-index-keeps-every-note-accessible",passed=await Script("document.querySelectorAll('.note-card').length===homeData.notes.length")=="true"});
+            await VerifySimplifiedShell(checks,a);
             // Clipboard tests use a DataObject in memory. They never overwrite the user's clipboard.
             var fragment="<p>فارسی <b>English</b></p><table><tr><td>A</td><td>B</td></tr></table>";
             using(var payload=JsonDocument.Parse(JsonSerializer.Serialize(new{html=fragment,text="فارسی English\\nA\\tB"})))
@@ -344,18 +345,18 @@ public partial class MainWindow
             await GoToSettings();
             checks.Add(new{name="language-switch-removed",passed=await Script("document.querySelector('[data-language]')===null")=="true"});
             await a.WaitFor("JotI18n.language==='en'");await WaitFor("JotI18n.language==='en'");
-            checks.Add(new{name="english-settings-and-back-label",passed=await Script("document.querySelector('.settings-header h1').textContent==='Settings'&&document.getElementById('settingsBack').textContent.includes('Back to notes')")=="true"});
+            checks.Add(new{name="english-settings-and-back-label",passed=await Script("document.querySelector('#settingsHandle .index-brand span').textContent==='Settings'&&document.getElementById('settingsBack').getAttribute('aria-label')==='Back to Home'")=="true"});
             checks.Add(new{name="ui-language-does-not-change-note-content",passed=noteBeforeLanguage==await a.Script("editor.innerHTML")});
             await a.Script("setInputDirection('rtl')");
             checks.Add(new{name="english-ui-still-supports-persian-and-english",passed=await a.Script("getComputedStyle(editor.querySelector('p')).direction==='ltr'&&[...editor.querySelectorAll('p')].some(p=>getComputedStyle(p).direction==='rtl')")=="true"});
             await settings.Capture("settings-english");
             await GoToIndex();await Capture("index-english");
-            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').textContent.includes('New note')&&document.querySelector('#homeQuit .quit-idle').textContent==='Quit Jot'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
+            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').getAttribute('aria-label')==='New note'&&document.getElementById('homeClose').getAttribute('aria-label')==='Close to tray'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
             await GoToSettings();
             await settings.Script("preference({language:'fa'}).then(()=>window.legacyLanguageChecked=true)");
             await settings.WaitFor("window.legacyLanguageChecked===true");
             await GoToIndex();
-            checks.Add(new{name="legacy-persian-ui-setting-is-ignored",passed=await Script("document.querySelector('.index-app').dir==='ltr'&&document.getElementById('homeNew').textContent.includes('New note')")=="true"});
+            checks.Add(new{name="legacy-persian-ui-setting-is-ignored",passed=await Script("document.querySelector('.index-app').dir==='ltr'&&document.getElementById('homeNew').getAttribute('aria-label')==='New note'")=="true"});
             a.Post(new { @event="active-window",active=true });await a.WaitFor("app.dataset.activeWindow==='true'");
             await a.Capture("selected-note");
             a.RenderWindowSurface("note-window-active");
@@ -367,19 +368,20 @@ public partial class MainWindow
             await a.Capture("inactive-note");
             a.RenderWindowSurface("note-window-inactive");
             checks.Add(new{name="inactive-note-eight-pixel-color-strip",passed=await a.Script("getComputedStyle(document.getElementById('handle'),'::before').height==='8px'&&getComputedStyle(app).backgroundColor===getComputedStyle(editor).backgroundColor")=="true"});
+            await GoToSettings();
             // A failed save must cancel Quit and leave all windows and drafts available.
             await a.Script("window.realId=model.activeId;activeNote().id='invalid';model.activeId='invalid';revision++;clearTimeout(saveTimer)");
             var beforeFailedQuit=session.Windows.Count;
-            await ClickControl("#homeQuit");
-            await WaitFor("document.getElementById('homeQuit').disabled===false&&!document.getElementById('homeError').hidden");
-            checks.Add(new{name="quit-cancels-on-save-error",passed=session.Windows.Count==beforeFailedQuit&&await Script("document.getElementById('homeQuit').getAttribute('aria-busy')==='false'")=="true"});
+            await ClickControl("#settingsQuit");
+            await WaitFor("document.getElementById('settingsQuit').disabled===false&&!document.getElementById('homeError').hidden");
+            checks.Add(new{name="quit-cancels-on-save-error",passed=session.Windows.Count==beforeFailedQuit&&await Script("document.getElementById('settingsQuit').getAttribute('aria-busy')==='false'")=="true"});
             await a.Script("activeNote().id=window.realId;model.activeId=window.realId;editor.innerHTML='<p>Quit save sentinel A</p>';onEdit();clearTimeout(saveTimer)");
             await b.Script("editor.innerHTML='<p>Quit save sentinel B</p>';onEdit();clearTimeout(saveTimer)");
-            await ClickControl("#homeQuit");
+            await ClickControl("#settingsQuit");
             for(int i=0;i<150&&!TestHostActions.Contains("quit");i++)await Task.Delay(40);
             var quitData=(await store.Load())!.Value.GetProperty("notes").EnumerateArray().ToArray();
             checks.Add(new{name="quit-flushes-every-open-note",passed=TestHostActions.Contains("quit")&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel A"))&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel B"))});
-            checks.Add(new{name="quit-shows-pending-spinner-and-label",passed=await Script("document.getElementById('homeQuit').disabled&&document.getElementById('homeQuit').getAttribute('aria-busy')==='true'&&getComputedStyle(document.querySelector('#homeQuit .quit-spinner')).display!=='none'")=="true"});
+            checks.Add(new{name="quit-shows-pending-spinner-and-label",passed=await Script("document.getElementById('settingsQuit').disabled&&document.getElementById('settingsQuit').getAttribute('aria-busy')==='true'&&getComputedStyle(document.querySelector('#settingsQuit .quit-spinner')).display!=='none'")=="true"});
             await MeasureDirectRendering(checks);
             checks.Add(new{name="no-renderer-exceptions",passed=session.Windows.All(w=>w.RuntimeErrors.Count==0)});
             var report=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});

@@ -88,7 +88,7 @@
     assert($('menu').hidden,'copy did not dismiss More menu');
   });
   await test('more-labels-describe-the-action-and-theme-target',async()=>{
-    assert($('menuNotesButton').textContent.trim()==='All notes','notes label');
+    assert($('menuNotesButton').textContent.trim()==='Home','notes label');
     assert($('copyButton').textContent.trim()==='Copy'&&$('copyButton').title.includes('images'),'rich-copy label');
     assert(!$('copyTextButton'),'plain-copy option remains');
     assert($('exportButton').textContent.trim()==='Export'&&$('deleteButton').textContent.trim()==='Delete','menu labels are not concise');

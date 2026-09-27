@@ -23,6 +23,12 @@ Invalid JSON, duplicate identifiers, unsupported schemas, bad timestamps and blo
 
 Migration is performed by the new app on first launch. Development verification does not migrate the user's actual note store. Quit the old Jot process before launching the new version: the single-instance mechanism otherwise activates the already-running old app. After migration, do not continue editing through an older JSON-based release, since those changes do not update SQLite.
 
+## Work-window session
+
+The optional `app_state.extra.desktopSession` object has version 1 and a `windows` array of note ID plus physical-pixel X/Y/Width/Height records. No schema upgrade, note-content rewrite, or image-storage change is needed. Normal Quit and Windows system-close commands share one operation: flush notes, transactionally record only visible non-minimized note windows, then update the database backup. System close is intercepted before any window is independently hidden, so taskbar Close all windows preserves the same note set as Quit. The note's custom X remains an individual hide. Other app-state metadata is retained. Hidden notes and image viewers are not startup targets.
+
+Startup loads the session without loading every note's rich HTML. Deleted IDs are filtered and duplicates removed. A missing or empty session creates one blank note; an invalid/unsupported session fails visibly instead of replacing data. Home is revealed only explicitly or as error recovery. Restored bounds are fitted to an available monitor before note content becomes visible. Snapshots require a normal Quit from this build; older builds and forced termination do not capture the current visible-window set.
+
 ## Backup and recovery
 
 Opening an existing schema-1 database first creates a verified backup and a retained `jot.db.before-v2.bak` recovery snapshot. The settings-table creation, seeding of all existing notes from their prior shared settings, and schema-version change are then committed in one transaction. A backup failure leaves the schema/data unchanged. Normal rolling backups do not replace the retained pre-v2 snapshot. Older v1.5 binaries intentionally reject schema 2; do not alternate between old and new binaries against the same live store.

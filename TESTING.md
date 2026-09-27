@@ -2,6 +2,56 @@
 
 ## Current development build (v1.6.0)
 
+`dist/Jot-dev-tray-anchor/Jot.exe` passed **75/75 focused tray-anchor checks** in `test-results/tray-anchor-01/tray-anchor-results.json`. Release publish and `git diff --check` passed. This iteration changes tray geometry only; the broader lifecycle suite was not rerun. The previous full run is recorded below. No installer or commit was made.
+
+Unlike previous placement-only tests, the new probe moves the actual WPF popup HWND using the production positioning path, then measures the visible border with `PointToScreen`. All eight light/dark measurements at 100/125/150/200% rendering scales report **dx=0 and dy=0** between the menu's bottom-right and the specified icon top-left. Expanding an error message retains that same corner. Measurements: `test-results/tray-anchor-01/tray-anchor-measurements.json`. The HWND remains invisible, non-activating, non-topmost, offscreen, and absent from the taskbar throughout.
+
+Focused checks also cover monitor-boundary flips, negative screen origins, icon hit-cell padding, transparent bitmap padding, and the safe click fallback. The production resolver derives visible icon bounds from the shell rectangle, current-DPI small-icon size and ICO alpha bounds; the native positioning code uses measured border offsets instead of an assumed six-pixel shadow. No live Explorer tray registration or right-click was exercised.
+
+Repeat just this focused check with `Jot.exe --exit-probe --probe-scenario tray-anchor --test-output <fresh-isolated-directory>`.
+
+## Previous system-close checks
+
+`dist/Jot-dev-system-close/Jot.exe` passed **649/649 checks** in `test-results/system-close-01/results.json`. Release build/publish and `git diff --check` passed. No installer or commit was made. No user app, taskbar, tray or note content was manipulated by testing.
+
+Six new two-process scenarios cover normal Settings Quit, taskbar/system `SC_CLOSE`, direct `WM_CLOSE`, Home only, one individually hidden note, and notes without Home. Each first process delivers Windows close messages only to its own verified invisible/non-activating/non-taskbar windows, actually exits through `Application.Shutdown`, and records a zero-window exit. A separately launched process then restores and verifies the exact note IDs, or one blank for an empty session, with Home still dormant. All original last drafts are checked from the isolated database after the first process has exited. Evidence is in `test-results/system-close-01/system-close/<scenario>/probe-expected.json`, `probe-exit.json`, and `probe-restored.json`.
+
+The production native-window hook now routes system close to the single shared Quit operation before WPF can turn those requests into independent note hides. Custom note X continues to hide just its own note. Low system-command flag bits are masked as specified by [WM_SYSCOMMAND](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-syscommand); direct [WM_CLOSE](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-close) is covered too. These are real native messages and process terminations, not merely saved-session helper tests. Explorer's menu itself is not clicked on the live desktop.
+
+Tray placement checks now follow the Docker screenshot reference: upward, right-aligned to the icon; the visible card can reach the icon at the taskbar without an extra work-area gap. Monitor edges still constrain the menu, with direction flips for other taskbar edges. Jot's compact light/dark styling and no-default-selection behavior are retained. Live Shell popup placement remains unverified.
+
+## Previous lifecycle checks
+
+`dist/Jot-dev-lifecycle/Jot.exe` passed **618/618 offscreen checks** in `test-results/lifecycle-matrix-final/results.json`. Release publish, JavaScript syntax checks and `git diff --check` passed. No installer was built, no commit was made, and the running `dist/Jot-dev-resume` app was left untouched.
+
+The added lifecycle matrix executes actual note-X, native-close, Settings-Quit and tray-dispatch paths against isolated windows/stores, rather than only calling snapshot helpers. Cases cover Home+notes, Settings+notes, notes only, Home only, tray only, one closed note, a reopened note, native-close, minimized notes, close/Quit races, reopen during a slow close, late text without an input notification, a pending image, failed-save/retry, new-note/Quit races, stale save acknowledgements and repeated Quit. Restarts verify exact note IDs (or one fresh blank), complete final bilingual text/content, and dormant Home. Failure preserves the old session and editable drafts. Pending image content is checked in stored HTML; original-resolution behavior remains covered by the existing image/clipboard checks.
+
+The first matrix run caught an inert-editor/pending-insert ordering problem and a test-mode native-close regression. Both were corrected before the final passing run. Notes now wait for pending inserts before becoming inert, force a final DOM snapshot, and wait out an earlier autosave. Native close intent and uniquely correlated flush acknowledgements prevent stale operations from reopening/closing the wrong state. Accepted note creations finish before Quit snapshots the session.
+
+Tray geometry tests now use the same icon-edge placement function as production, including the user's 1440×900 screenshot case, overflow near either horizontal edge, four taskbar edges, negative monitor origins and 100/125/150/200% scale. The .NET 10 NotifyIcon identity adapter is tested using an invisible, unregistered icon. [Shell_NotifyIconGetRect](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shell_notifyicongetrect) supplies the actual icon bounds in production; this supersedes whole-overflow-panel exclusion. No live tray icon/foreground is manipulated by tests, so live Shell interaction remains unverified.
+
+## Previous note-first startup checks
+
+`dist/Jot-dev-resume/Jot.exe` passed **496/496 offscreen checks** in `test-results/resume-work-final/results.json`. Release publish, JavaScript syntax checks and `git diff --check` passed. No installer was rebuilt, and the user's running `dist/Jot-dev-simple` process was left unchanged.
+
+New restart checks use independent session/store instances and fresh synthetic data: first launch creates one blank note with Home's WebView dormant; Quit captures visible notes, excludes hidden notes/viewers, and backs up the session; reopening restores the same notes once, with rich bilingual content, per-note settings and saved dimensions. Repeated activation reuses visible notes, empty sessions create a new note without replacing old notes, missing/deleted IDs are ignored, malformed layouts cannot replace a good snapshot, unrelated app metadata is retained, and failed session writes leave windows and the previous snapshot intact. Geometry is clamped against positive/negative work areas. No production data is read or changed.
+
+Tray checks reproduce overflow-panel exclusion rectangles across scales and monitor origins. Placement avoids them, rather than only clamping against the taskbar. A remembered Settings focus is cleared to a non-action root on every open. Light/dark tray previews show Home and the standard gear without preselected rows. Actual Explorer foreground/overflow interaction and production note placement are not driven on the live desktop; test windows stay invisible, non-activating and non-topmost.
+
+Implementation references: [Microsoft's notification-icon menu foreground guidance](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackpopupmenu#remarks), [WindowFromPoint](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-windowfrompoint), and the [Lucide settings glyph](https://github.com/lucide-icons/lucide/blob/main/icons/settings.svg). Jot retains its custom WPF popup, not a native menu. Only a user-opened production popup temporarily becomes topmost; note Pin behavior is unaffected.
+
+## Previous simplified-shell checks
+
+`dist/Jot-dev-simple/Jot.exe` passed **460/460 offscreen checks** in `test-results/simple-shell-final/results.json`. The simplified index and Settings were visually checked in both themes, including the 360×280 minimum window size. The tray previews show four compact rows without shortcut labels or a forced first-row outline. JavaScript syntax checks, Release build/publish and `git diff --check` passed. No installer was built; the user's running `dist/Jot-dev-theme` app was not touched.
+
+The index now exposes New note, Settings, Minimize and Close to tray, with title-only Rename. Tests verify that group data survives rename/content saves but no group/search UI remains, every note stays accessible, Settings reuses the window, and both close/minimize buttons route to distinct native actions. Global Settings has only Theme and Quit; note writing settings remain independent.
+
+Jot-specific hotkeys/shortcuts are removed: the native registration entry point is absent, and custom note/index/settings/image key combinations do not invoke app actions or change toolbar/fullscreen/zoom state. Standard editing keys and accessible menu/dialog navigation remain supported. Image fullscreen/zoom controls still work through their buttons and custom menu.
+
+Tray checks cover 212-DIP width, 32-DIP rows, four actions, light/dark rendering, pending/error recovery, and pixel-placement bounds for top/bottom/left/right taskbars, overflow anchors, growing error content, negative monitor coordinates and 100/125/150/200% sizes. Production placement occurs before revealing/activating the menu and is recalculated after sizing. Actual live-shell anchoring and cross-monitor DPI changes were not exercised, to avoid interrupting the desktop.
+
+## Previous global-theme development checks
+
 `dist/Jot-dev-theme/Jot.exe` passed **436/436 offscreen checks** in `test-results/global-theme-01/results.json`. No installer was built or updated for this iteration. Release publish, JavaScript syntax checks and `git diff --check` passed. The running `dist/Jot-dev` app was left untouched.
 
 Added checks cover independent per-note font/line-height/toolbar/pin persistence, rapid setting changes, cross-note/global-writing-default rejection from note windows, unchanged siblings and note HTML, new-note defaults, schema-1 upgrade seeding, retained pre-upgrade backups, failed-upgrade recovery, validation of note-setting values, stale content saves preserving view settings, and cascading cleanup of deleted-note preferences. Settings UI now describes app appearance and new-note defaults explicitly.

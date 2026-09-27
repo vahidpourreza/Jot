@@ -24,7 +24,7 @@ function setZoom(value,x=stage.clientWidth/2,y=stage.clientHeight/2){
 function fit(value){if(!value){setZoom(1);return;}fitMode=true;stage.scrollTo(0,0);layout();}
 async function setFullscreen(value=!fullscreen){
   if(fullscreenBusy)return;fullscreenBusy=true;$('imageFullscreen').disabled=true;
-  try{fullscreen=await request('image-fullscreen',value);const b=$('imageFullscreen');b.ariaPressed=String(fullscreen);b.ariaLabel=fullscreen?'Exit fullscreen':'Enter fullscreen';b.title=fullscreen?'Exit fullscreen · Esc':'Fullscreen · F11';b.replaceChildren(JotDesign.icon(fullscreen?'minimize':'maximize'));layout();}
+  try{fullscreen=await request('image-fullscreen',value);const b=$('imageFullscreen');b.ariaPressed=String(fullscreen);b.ariaLabel=fullscreen?'Exit fullscreen':'Enter fullscreen';b.title=fullscreen?'Exit fullscreen':'Fullscreen';b.replaceChildren(JotDesign.icon(fullscreen?'minimize':'maximize'));layout();}
   catch(e){error(e);}finally{fullscreenBusy=false;$('imageFullscreen').disabled=false;}
 }
 $('fitButton').onclick=()=>fit(true);$('actualButton').onclick=()=>fit(false);
@@ -43,11 +43,11 @@ $('imageCopy').onclick=copyImage;
 function openImageMenu(x,y){
   JotMenus.open({x,y,owner:stage,restore:()=>stage.focus({preventScroll:true}),error,items:[
     {id:'copy',label:'Copy image',icon:'copy',disabled:$('imageCopy').disabled,pending:'Copying…'},
-    {separator:true},{id:'zoom-in',label:'Zoom in',icon:'plus',shortcut:'+',disabled:zoom>=8},
-    {id:'zoom-out',label:'Zoom out',icon:'minus',shortcut:'−',disabled:zoom<=.1},
-    {id:'fit',label:'Fit to window',icon:'scan',shortcut:'0'},
-    {id:'actual',label:'100%',icon:'scan',shortcut:'1'},
-    {separator:true},{id:'fullscreen',label:fullscreen?'Exit fullscreen':'Fullscreen',icon:fullscreen?'minimize':'maximize',shortcut:'F11'}
+    {separator:true},{id:'zoom-in',label:'Zoom in',icon:'plus',disabled:zoom>=8},
+    {id:'zoom-out',label:'Zoom out',icon:'minus',disabled:zoom<=.1},
+    {id:'fit',label:'Fit to window',icon:'scan'},
+    {id:'actual',label:'100%',icon:'scan'},
+    {separator:true},{id:'fullscreen',label:fullscreen?'Exit fullscreen':'Fullscreen',icon:fullscreen?'minimize':'maximize'}
   ],async run(action){
     if(action==='copy')await copyImage();
     else if(action==='zoom-in')setZoom(zoom*1.25);
@@ -65,11 +65,6 @@ stage.addEventListener('pointerdown',e=>{if(e.button!==0||stage.dataset.pannable
 stage.addEventListener('pointermove',e=>{if(drag){stage.scrollLeft=drag.left+drag.x-e.clientX;stage.scrollTop=drag.top+drag.y-e.clientY;}});
 function endDrag(){drag=null;stage.dataset.dragging='false';}
 stage.addEventListener('pointerup',endDrag);stage.addEventListener('lostpointercapture',endDrag);stage.addEventListener('pointercancel',endDrag);
-document.addEventListener('keydown',e=>{
-  if(e.key==='F11'){e.preventDefault();setFullscreen();}
-  else if(e.key==='Escape'){e.preventDefault();if(fullscreen)setFullscreen(false);else request('hide').catch(error);}
-  else if(['+','=','-','0','1'].includes(e.key)){e.preventDefault();if(e.key==='0')fit(true);else if(e.key==='1')fit(false);else setZoom(zoom*(e.key==='-'?.8:1.25));}
-});
 new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(layout);}).observe(stage);
 JotBridge.on(data=>{if(data.event==='preferences')JotDesign.apply(data.prefs);if(data.event==='clipboard-success')$('imageError').hidden=true;});
 (async()=>{

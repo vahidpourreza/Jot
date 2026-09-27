@@ -12,7 +12,6 @@ namespace Jot;
 
 public partial class MainWindow : Window
 {
-    private const int HotkeyId = 4201;
     internal readonly JotSession session;
     private readonly bool testing;
     private readonly string testOutput;
@@ -30,9 +29,14 @@ public partial class MainWindow : Window
     internal long ContentReadyMs { get; private set; }
     private string pageUri = "";
     private TaskCompletionSource? flushCompletion;
+    private string? flushId;
+    private readonly TaskCompletionSource<bool> editorReadyCompletion=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Task? hideTask;
+    private bool forceNativeHide;
+    internal bool HideRequested { get; private set; }
+    internal int TestSaveDelayMs;
     private System.Drawing.Icon? themedIcon;
     private bool nativeReady;
-    private bool hotkeyUnavailable;
     internal string NativeIconKey { get; private set; } = "";
     internal readonly List<string> TestHostActions = [];
     internal readonly List<string> RuntimeErrors = [];
@@ -44,9 +48,13 @@ public partial class MainWindow : Window
     internal string? NoteId { get; }
     internal string? ImageSource { get; set; }
     internal bool IsSettingsView { get; private set; }
+    private bool startupWarning;
+    internal void ShowStartupWarning()
+    {
+        startupWarning=true;
+        Post(new{@event="warning",message="Could not restore your note windows. Your notes are unchanged; open them from Home."});
+    }
 
-    [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hWnd, int id, uint modifiers, uint key);
-    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hWnd, int id);
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern nint SendMessage(nint hWnd, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll")] private static extern nint GetKeyboardLayout(uint threadId);
@@ -75,7 +83,7 @@ public partial class MainWindow : Window
         ShowInTaskbar=!testing;
         Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(23,23,23);
         UpdateNativeIcon();
-        if (mode == "home") { Width = 820; Height = 650; MinWidth = 520; MinHeight = 420; }
+        if (mode == "home") { Width = 520; Height = 540; MinWidth = 360; MinHeight = 280; }
         if (mode == "image") { Width = 920; Height = 680; MinWidth = 360; MinHeight = 280; }
         if (testing) { ShowActivated = false; ShowInTaskbar = false; Left = -32000; Top = -32000; Opacity = 0; }
         else
@@ -97,8 +105,9 @@ public partial class MainWindow : Window
     internal void Reveal()
     {
         if (closingPermanently) return;
+        HideRequested=false;
         Show();
-        if (!testing) { WindowState = WindowState.Normal; if (ContentReady) Activate(); }
+        if (!testing) { WindowState = WindowState.Normal; ApplyPendingNoteLayout(); if (ContentReady) Activate(); }
         Post(new { @event = "focus" });
     }
     private void OnWindowVisibilityChanged(object sender,DependencyPropertyChangedEventArgs e)
@@ -125,8 +134,6 @@ public partial class MainWindow : Window
         if(!testing&&Mode=="home")
         {
             CreateTray();
-            hotkeyUnavailable=!RegisterHotKey(handle,HotkeyId,0x0002|0x0001|0x4000,0x4A);
-            if(hotkeyUnavailable)session.Log.Event("hotkey-registration","unavailable");
         }
     }
     private void OnSystemPreferenceChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs args)
@@ -203,11 +210,6 @@ public partial class MainWindow : Window
                 if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); RevealReadyContent(); return; }
                 if (runTests) await RunSelfTests();
                 else if(testing&&session.PackageSmoke&&Mode=="home")await RunPackageSmoke();
-                else if (!testing && Mode == "home" && hotkeyUnavailable)
-                {
-                    await Task.Delay(800);
-                    Post(new { @event = "warning", message = "Ctrl+Alt+J is used by another app. Use the tray icon." });
-                }
             };
             var page = Mode == "home" ? (IsSettingsView ? "settings.html" : "home.html") : Mode == "image" ? "image.html" : "index.html";
             pageUri = new Uri(Path.Combine(AppContext.BaseDirectory, page)).AbsoluteUri;
@@ -216,6 +218,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (closingPermanently) return;
+            editorReadyCompletion.TrySetResult(false);
             LogFailure(ex);
             RevealReadyContent();
             if (testing) System.Windows.Application.Current.Shutdown(1);
@@ -226,27 +229,50 @@ public partial class MainWindow : Window
 
     private void CreateTray()
     {
-        tray = new System.Windows.Forms.NotifyIcon { Text = "Jot · Ctrl+Alt+J", Visible = true, Icon = themedIcon };
+        tray = new System.Windows.Forms.NotifyIcon { Text = "Jot", Visible = true, Icon = themedIcon };
         tray.MouseClick += async (_, args) => {
             try
             {
                 if(args.Button==System.Windows.Forms.MouseButtons.Left){session.TrayMenu?.Dismiss();session.Home();}
-                else if(args.Button==System.Windows.Forms.MouseButtons.Right)await session.ShowTrayMenu(System.Windows.Forms.Cursor.Position);
+                else if(args.Button==System.Windows.Forms.MouseButtons.Right)
+                {
+                    var anchor=System.Windows.Forms.Cursor.Position;
+                    await session.ShowTrayMenu(anchor,TrayIconBounds.Resolve(tray!,anchor));
+                }
             }
             catch(Exception error){session.Log.Error("tray-open",error);Post(new{@event="warning",message="Could not open Jot. Please try again."});}
         };
     }
-    internal async Task Flush()
+    internal async Task Flush(bool holdEditing=false)
     {
-        if (closingPermanently || Mode != "note" || webView is null) return;
-        if (flushCompletion is not null) { await flushCompletion.Task; return; }
-        flushCompletion = new TaskCompletionSource();
+        if (closingPermanently || Mode != "note") return;
+        if(!await editorReadyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16)))return;
+        if(holdEditing)Post(new{@event="prepare-quit"});
+        if (flushCompletion is not null) { await flushCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16)); return; }
+        flushCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);flushId=Guid.NewGuid().ToString("N");
         try
         {
-            if (!Post(new { @event = "flush", intent = "ack" })) throw new IOException("The editor is unavailable. Your note window has been kept open.");
+            if (!Post(new { @event = "flush", intent=flushId,holdEditing })) throw new IOException("The editor is unavailable. Your note window has been kept open.");
             await flushCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16));
         }
-        finally { flushCompletion = null; }
+        finally { flushCompletion = null;flushId=null; }
+    }
+    internal Task HideAfterSaving(bool forceHide=false)
+    {
+        HideRequested=true;
+        forceNativeHide|=forceHide;
+        return hideTask is {IsCompleted:false}?hideTask:hideTask=HideAfterSavingCore();
+    }
+    private async Task HideAfterSavingCore()
+    {
+        try
+        {
+            await Flush(true);
+            if(!closingPermanently&&HideRequested&&(forceNativeHide||!testing||session.ExerciseLifecycle||session.ExitProbe))Hide();
+            if(testing&&!session.ExerciseLifecycle&&!session.ExitProbe&&!forceNativeHide){HideRequested=false;Post(new{@event="resume-editing"});}
+        }
+        catch{HideRequested=false;Post(new{@event="resume-editing"});throw;}
+        finally{forceNativeHide=false;}
     }
     internal void ClosePermanently() { if (closingPermanently) return; allowClose = true; Close(); }
 
@@ -268,7 +294,7 @@ public partial class MainWindow : Window
             object? result = null;
             switch (action)
             {
-                case "context": result = new { mode = Mode, noteId = NoteId, image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive, visible = IsVisible }; break;
+                case "context": result = new { mode = Mode, noteId = NoteId, image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive, visible = IsVisible, startupWarning }; break;
                 case "input-language": result = InputDirection(); break;
                 case "log-error": session.Log.Renderer(payload); result = true; break;
                 case "load": result = await store.Load(); break;
@@ -279,7 +305,8 @@ public partial class MainWindow : Window
                     result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing },
                         model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = await store.LoadPreferences() } };
                     break;
-                case "editor-ready": case "editor-failed": RevealReadyContent(); break;
+                case "editor-ready": editorReadyCompletion.TrySetResult(true);RevealReadyContent(); break;
+                case "editor-failed": editorReadyCompletion.TrySetResult(false);RevealReadyContent(); break;
                 case "preferences-load": result = await store.LoadPreferences(); break;
                 case "import": await store.Import(payload); break;
                 case "new-note": result = (await session.NewNote()).NoteId; break;
@@ -291,7 +318,6 @@ public partial class MainWindow : Window
                     session.OpenNote(noteId); break;
                 case "home": session.Home(payload.ValueKind == JsonValueKind.True); break;
                 case "settings": session.Settings(); break;
-                case "tray-visibility": session.OpenTrayVisibilitySettings(); break;
                 case "note-metadata": await store.SaveMetadata(payload); await session.Changed(false, payload.GetProperty("id").GetString()); result = true; break;
                 case "note-delete":
                     if (Mode != "note" || payload.GetString() != NoteId) throw new InvalidDataException("Delete a note from its own window.");
@@ -306,6 +332,7 @@ public partial class MainWindow : Window
                     break;
                 case "save":
                     if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
+                    if(testing&&TestSaveDelayMs>0)await Task.Delay(TestSaveDelayMs);
                     await store.SaveNote(payload); await session.Changed(preferences: false); result = true; break;
                 case "preferences":
                     if(Mode!="home")throw new InvalidOperationException("Change app defaults from Settings, not a note window.");
@@ -333,15 +360,18 @@ public partial class MainWindow : Window
                 case "image-fullscreen": result=SetImageFullscreen(payload.GetBoolean());break;
                 case "hide":
                     if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, ClosePermanently);
-                    else if (!testing) Hide();
+                    else await HideAfterSaving();
                     break;
+                case "minimize":
+                    if(!testing)WindowState=WindowState.Minimized;
+                    result=true;break;
                 case "quit":
                     if (Mode == "note") throw new InvalidOperationException("Quit Jot from Home, Settings, or the tray.");
-                    if (testing) await session.FlushNotes();
+                    if (testing&&!session.ExerciseLifecycle&&!session.ExitProbe) await session.FlushNotes();
                     else _ = Dispatcher.InvokeAsync(async () => { try { await session.Quit(); } catch (Exception ex) { session.Log.Error("quit",ex,Mode);Post(new { @event = "quit-failed", message = ex.Message }); } });
                     break;
-                case "flush-complete": flushCompletion?.TrySetResult(); break;
-                case "flush-failed": flushCompletion?.TrySetException(new IOException("ذخیره یکی از یادداشت‌ها انجام نشد.")); break;
+                case "flush-complete": if(payload.ValueKind==JsonValueKind.String&&payload.GetString()==flushId)flushCompletion?.TrySetResult(); break;
+                case "flush-failed": if(payload.ValueKind==JsonValueKind.String&&payload.GetString()==flushId)flushCompletion?.TrySetException(new IOException("Could not save a note. Jot is still open.")); break;
                 case "view-image":
                     var src = payload.GetString() ?? "";
                     if (!System.Text.RegularExpressions.Regex.IsMatch(src, @"^data:image/(png|jpeg|webp|gif);base64,") || src.Length > 12*1024*1024)
@@ -401,6 +431,14 @@ public partial class MainWindow : Window
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
         if (closingPermanently) return 0;
+        // Shell/taskbar Close (including Close all windows) is an app shutdown,
+        // not a sequence of note-header X actions. Intercept before WPF hides any
+        // window so Quit can snapshot the original visible-note set exactly once.
+        // Header X uses the explicit bridge hide action and never enters here.
+        if(!allowClose&&(!testing||session.ExitProbe)&&(msg==0x0010||msg==0x0112&&(wParam.ToInt64()&0xFFF0)==0xF060))
+        {
+            handled=true;session.RequestSystemQuit();return 0;
+        }
         if (msg == 0x0051) _ = Dispatcher.BeginInvoke(NotifyInputLanguage);
         if (msg == 0x0084&&!IsImageFullscreen)
         {
@@ -410,23 +448,7 @@ public partial class MainWindow : Window
             int hit = top ? (left ? 13 : right ? 14 : 12) : bottom ? (left ? 16 : right ? 17 : 15) : left ? 10 : right ? 11 : 1;
             if (hit != 1) { handled = true; return hit; }
         }
-        if (msg == 0x0312 && wParam.ToInt32() == HotkeyId)
-        {
-            _ = ToggleNoteWindow();
-            handled = true;
-        }
         return 0;
-    }
-    private async Task ToggleNoteWindow()
-    {
-        try
-        {
-            var last = session.Windows.LastOrDefault(window => window.Mode == "note");
-            if (last is null) await session.NewNote();
-            else if (last.IsVisible) { await last.Flush(); last.Hide(); }
-            else last.Reveal();
-        }
-        catch (Exception ex) { session.Log.Error("toggle-note",ex,Mode);Post(new { @event = "warning", message = ex.Message }); }
     }
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
@@ -434,7 +456,7 @@ public partial class MainWindow : Window
         if (!allowClose && Mode != "image")
         {
             e.Cancel = true;
-            try { await Flush(); if (!closingPermanently) Hide(); }
+            try { await HideAfterSaving(true); }
             catch (Exception ex) { session.Log.Error("close-window",ex,Mode);Post(new { @event = "warning", message = ex.Message }); }
             return;
         }
@@ -445,11 +467,12 @@ public partial class MainWindow : Window
         Activated -= OnWindowActivated; Deactivated -= OnWindowDeactivated;
         IsVisibleChanged -= OnWindowVisibilityChanged;
         Loaded -= OnLoaded; SizeChanged -= OnSizeChanged;
-        if (source is not null) { UnregisterHotKey(source.Handle, HotkeyId); source.RemoveHook(WndProc); }
+        if (source is not null) source.RemoveHook(WndProc);
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged -= OnInputLanguageChanged;
         if(!testing&&Mode=="home")Microsoft.Win32.SystemEvents.UserPreferenceChanged-=OnSystemPreferenceChanged;
         if (webView is not null) webView.WebMessageReceived -= OnWebMessage;
         webView = null;
+        editorReadyCompletion.TrySetResult(false);
         // Release the composition controller while its native parent still exists.
         if (!browserDisposed) { Browser.Dispose(); browserDisposed = true; }
     }

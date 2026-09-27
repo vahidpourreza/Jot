@@ -3,15 +3,15 @@
 <body><main class="image-app">
   <header id="imageHandle" class="image-handle"><span>Image</span><span class="spacer"></span>
     <button id="imageCopy" class="icon-button" data-icon="copy" aria-label="Copy original image" title="Copy original image"></button>
-    <button id="imageFullscreen" class="icon-button" data-icon="maximize" aria-label="Enter fullscreen" title="Fullscreen · F11" aria-pressed="false"></button>
+    <button id="imageFullscreen" class="icon-button" data-icon="maximize" aria-label="Enter fullscreen" title="Fullscreen" aria-pressed="false"></button>
     <button id="imageClose" class="icon-button" data-icon="x" aria-label="Close" title="Close"></button>
   </header>
   <nav class="image-tools" aria-label="Image zoom">
-    <button id="zoomOut" class="icon-button" data-icon="minus" aria-label="Zoom out" title="Zoom out · −"></button>
+    <button id="zoomOut" class="icon-button" data-icon="minus" aria-label="Zoom out" title="Zoom out"></button>
     <output id="imageZoom" aria-label="Zoom level">100%</output>
-    <button id="zoomIn" class="icon-button" data-icon="plus" aria-label="Zoom in" title="Zoom in · +"></button>
-    <button id="fitButton" class="text-button" title="Fit to window · 0" aria-pressed="true">Fit</button>
-    <button id="actualButton" class="text-button" title="Original size · 1" aria-pressed="false">100%</button>
+    <button id="zoomIn" class="icon-button" data-icon="plus" aria-label="Zoom in" title="Zoom in"></button>
+    <button id="fitButton" class="text-button" title="Fit to window" aria-pressed="true">Fit</button>
+    <button id="actualButton" class="text-button" title="Original size" aria-pressed="false">100%</button>
   </nav>
   <div id="imageStage" class="image-stage" data-fit="true"><div id="imageCanvas" class="image-canvas"><img id="fullImage" alt="Note image" draggable="false"></div></div>
   <footer id="imageDimensions" class="image-footer"></footer><div id="imageCopyStatus" class="image-copy-status" role="status" aria-live="polite" hidden></div><p id="imageError" class="error" role="alert" hidden></p>

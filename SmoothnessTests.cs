@@ -14,11 +14,11 @@ public partial class MainWindow
         await Script("""
             window.indexPerfDone=false;
             (async()=>{
-              const saved={data:homeData,group:currentGroup,selection:selectedId,search:$('homeSearch').value};
+              const saved={data:homeData,selection:selectedId};
               const samples=[];let replaced=0;
               try{
                 homeData={...homeData,notes:Array.from({length:250},(_,i)=>({id:crypto.randomUUID(),title:'Note '+i,plain:'First line '+i+'\nمتن فارسی English preview',group:'Group '+i%5,updatedAt:Date.now()-i*1000,hasImage:false}))};
-                currentGroup=null;selectedId=null;$('homeSearch').value='';renderGroups();renderCards();
+                selectedId=null;renderCards();
                 for(let i=0;i<16;i++){
                   await new Promise(r=>setTimeout(r,25));
                   const unaffected=$('cards').lastElementChild;
@@ -29,7 +29,7 @@ public partial class MainWindow
                 }
                 samples.sort((a,b)=>a-b);
                 window.indexPerf={notes:250,medianMs:samples[8],p95Ms:samples[15],unaffectedRowReplacements:replaced};
-              }finally{homeData=saved.data;currentGroup=saved.group;selectedId=saved.selection;$('homeSearch').value=saved.search;renderGroups();renderCards();}
+              }finally{homeData=saved.data;selectedId=saved.selection;renderCards();}
               window.indexPerfDone=true;
             })().catch(error=>{window.indexPerfError=String(error);window.indexPerfDone=true;});
             """);
@@ -89,25 +89,22 @@ public partial class MainWindow
     {
         var result=await Script("""
             (()=>{
-              const saved={data:homeData,group:currentGroup,selection:selectedId,search:$('homeSearch').value};
+              const saved={data:homeData,selection:selectedId};
               const results=[];const check=(name,passed)=>results.push({name,passed});
               try{
                 homeData={...homeData,notes:[{id:'a',plain:'First\nPreview',updatedAt:1},{id:'b',title:'Second',plain:'سلام English',group:'*',updatedAt:2}]};
-                currentGroup=null;selectedId=null;$('homeSearch').value='';renderGroups();renderCards();
+                selectedId=null;renderCards();
                 const first=cardViews.get('a').card,second=cardViews.get('b').card;
-                check('initial-ungrouped-row-label-is-present',cardViews.get('a').group.textContent==='Ungrouped');
+                check('index-row-has-no-group-badge',!first.querySelector('.card-group'));
                 renderCards();check('unchanged-index-rows-reuse-dom',cardViews.get('a').card===first&&cardViews.get('b').card===second);
-                homeData.notes=homeData.notes.map(note=>({...note,...(note.id==='a'?{title:'Updated',group:'New group',updatedAt:3}:{})}));renderGroups();renderCards();
+                homeData.notes=homeData.notes.map(note=>({...note,...(note.id==='a'?{title:'Updated',group:'New group',updatedAt:3}:{})}));renderCards();
                 check('updated-index-row-keeps-node-and-reorders',cardViews.get('a').card===first&&$('cards').firstElementChild===first&&first.querySelector('strong').textContent==='Updated');
-                first.querySelector('.card-edit').click();check('cached-row-actions-use-current-metadata',$('noteTitleInput').value==='Updated'&&$('noteGroupInput').value==='New group');$('metadataDialog').close();
-                currentGroup='*';renderGroups();renderCards();
-                check('literal-star-group-is-not-all-notes',[...$('groupFilters').children].filter(button=>button.getAttribute('aria-pressed')==='true').length===1&&$('cards').children.length===1&&$('cards').firstElementChild===second);
-                currentGroup=null;renderGroups();renderCards();check('filter-roundtrip-reuses-row-nodes',$('cards').firstElementChild===first);
-                $('homeSearch').value='Updated';renderCards();check('index-search-still-filters-current-titles',$('cards').children.length===1&&$('cards').firstElementChild===first);
-                $('homeSearch').value='';homeData.notes=homeData.notes.filter(note=>note.id!=='a');renderCards();check('deleted-index-rows-release-cache',!cardViews.has('a')&&!first.isConnected);
-                homeData.notes[0].title='Currency enum حذف شد.';homeData.notes[0].group='Work یادداشت تیم';renderGroups();renderCards();
-                check('index-previews-use-smart-mixed-language-direction',cardViews.get('b').title.dir==='rtl'&&cardViews.get('b').title.querySelector('bdi')?.textContent==='Currency enum'&&cardViews.get('b').group.dir==='rtl');
-              }finally{homeData=saved.data;currentGroup=saved.group;selectedId=saved.selection;$('homeSearch').value=saved.search;renderGroups();renderCards();}
+                first.querySelector('.card-edit').click();check('cached-row-actions-use-current-metadata',$('noteTitleInput').value==='Updated'&&homeData.notes.find(n=>n.id==='a').group==='New group');$('metadataDialog').close();
+                check('groups-are-preserved-without-filtering-the-index',$('cards').children.length===2&&!$('groupFilters')&&!$('homeSearch')&&!$('noteGroupInput'));
+                homeData.notes=homeData.notes.filter(note=>note.id!=='a');renderCards();check('deleted-index-rows-release-cache',!cardViews.has('a')&&!first.isConnected);
+                homeData.notes[0].title='Currency enum حذف شد.';homeData.notes[0].group='Work یادداشت تیم';renderCards();
+                check('index-previews-use-smart-mixed-language-direction',cardViews.get('b').title.dir==='rtl'&&cardViews.get('b').title.querySelector('bdi')?.textContent==='Currency enum');
+              }finally{homeData=saved.data;selectedId=saved.selection;renderCards();}
               return results;
             })()
             """);

@@ -7,6 +7,13 @@ let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer
 let historyTimer=0,typingHistoryPending=false;
 let saveChain=Promise.resolve(),bookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
 let inputDirection='rtl',deleting=false;
+let editorLockedByHost=false;
+const pendingEdits=new Set();
+function trackEdit(operation){pendingEdits.add(operation);operation.then(()=>pendingEdits.delete(operation),()=>pendingEdits.delete(operation));return operation;}
+function resumeEditing(){editorLockedByHost=false;app.inert=false;}
+for(const type of ['pointerdown','keydown'])document.addEventListener(type,event=>{
+  if(editorLockedByHost){event.preventDefault();event.stopImmediatePropagation();}
+},true);
 let noteMenuAnimation=null,toolbarAnimation=null,colorMenuAnimation=null,toolbarShown=null;
 const visibilityAnimations=new Map();
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -22,9 +29,11 @@ const directionObserver=new MutationObserver(records=>directionChanges.push(...r
 directionObserver.observe(editor,{subtree:true,childList:true,characterData:true});
 JotBridge.on(data=>{
   if(data.event==='flush'){
-    saveNow().then(()=>JotBridge.send('flush-complete',data.intent)).catch(error=>{showError(error);JotBridge.send('flush-failed');});
+    flushFinal(data.holdEditing).then(()=>JotBridge.send('flush-complete',data.intent)).catch(error=>{showError(error);JotBridge.send('flush-failed',data.intent);});
   }
-  if(data.event==='focus')editor.focus();
+  if(data.event==='prepare-quit'){editorLockedByHost=true;app.inert=pendingEdits.size===0;window.JotEditorMenu?.close();window.JotMenus?.close();}
+  if(data.event==='resume-editing')resumeEditing();
+  if(data.event==='focus'){resumeEditing();editor.focus();}
   if(data.event==='input-language')setInputDirection(data.direction);
   if(data.event==='active-window')app.dataset.activeWindow=String(data.active);
   if(data.event==='clipboard-success'&&$('error').dataset.operation?.startsWith('clipboard-'))$('error').hidden=true;
@@ -227,10 +236,24 @@ function onEdit(kind = 'typing') {
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => app.classList.remove('typing'), 1800);
 }
-async function saveNow() {
+async function flushFinal(holdEditing=false){
+  editorLockedByHost||=holdEditing;app.inert=pendingEdits.size===0;
+  try{
+    while(pendingEdits.size)await Promise.all([...pendingEdits]);
+    app.inert=true;
+    // Capture the DOM even if the last input event/IME revision has not arrived.
+    // Recheck after an in-flight save so its earlier snapshot cannot win.
+    do{await saveNow(true);}while(revision>savedRevision||editor.innerHTML!==activeNote().html);
+  }finally{if(!editorLockedByHost)app.inert=false;}
+}
+async function saveNow(forceCapture=false) {
   await notePreferenceChain;
   clearTimeout(saveTimer);
   if (!ready) return Promise.reject(new Error('یادداشت‌ها هنوز آماده نیستند.'));
+  if(forceCapture){
+    const previous=activeNote().html;composing=false;normalizeDirection(false);capture();
+    if(activeNote().html!==previous)revision++;
+  }
   if(revision<=savedRevision)return saveChain;
   capture();
   flushTypingHistory(activeNote().html);
@@ -478,7 +501,8 @@ function readImage(file) {
     reader.readAsDataURL(file);
   });
 }
-async function insertImages(files,isCurrent=()=>true) {
+function insertImages(...args){return trackEdit(insertImagesCore(...args));}
+async function insertImagesCore(files,isCurrent=()=>true) {
   if (!files.length || imageBusy) return;
   rememberSelection();
   const targetId = model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange();
@@ -511,7 +535,8 @@ async function importHtml(html, files) {
   }
   return {html:unformattedClipboardHtml(doc.body),missing};
 }
-async function paste(event,isCurrent=()=>true) {
+function paste(...args){return trackEdit(pasteCore(...args));}
+async function pasteCore(event,isCurrent=()=>true) {
   event.preventDefault();
   rememberSelection();
   const targetId=model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange();
@@ -635,7 +660,7 @@ function setNoteMenuVisible(open) {
 }
 function setToolbarVisible(open) {
   $('formatButton').setAttribute('aria-expanded',String(open));
-  $('formatButton').title=(open?'Hide':'Show')+' formatting tools · Ctrl+Shift+F';
+  $('formatButton').title=(open?'Hide':'Show')+' formatting tools';
   if(toolbarShown===open)return;
   const initialized=toolbarShown!==null;toolbarShown=open;
   if(!open)closeFormatMenus();
@@ -688,7 +713,7 @@ function applyPin(value) {
     if(changed)request('pin',pinned).catch(showError);
 }
 $('pinButton').addEventListener('click',()=>setPreference({pinned:!pinned}));
-async function leave(action) { try { await saveNow(); await request(action); } catch (error) { showError(error); } }
+async function leave(action) { try { if(action!=='hide')await saveNow();await request(action); } catch (error) { showError(error); } }
 $('hideButton').addEventListener('click', () => leave('hide'));
 $('deleteButton').onclick=()=>{closePanels();$('deleteError').hidden=true;$('deleteDialog').showModal();$('deleteCancel').focus();};
 $('deleteCancel').onclick=()=>$('deleteDialog').close();
@@ -725,17 +750,12 @@ document.addEventListener('keydown', (event) => {
   if($('deleteDialog').open)return;
   if (event.isComposing) return;
   const ctrl = event.ctrlKey || event.metaKey;
-  if (ctrl && event.code === 'KeyK') { event.preventDefault(); if (!$('notesDialog').open) openNotes(); }
-  else if (ctrl && event.code === 'KeyN') { event.preventDefault(); newNote(); }
-  else if (ctrl && event.code === 'KeyS') { event.preventDefault(); saveNow().catch(showError); }
-  else if (ctrl && event.shiftKey && event.code === 'KeyF') { event.preventDefault(); $('formatButton').click(); }
-  else if (ctrl && editor.contains(document.activeElement) && ['KeyZ','KeyY'].includes(event.code)) { event.preventDefault(); undo(event.shiftKey || event.code === 'KeyY'); }
+  if (ctrl && editor.contains(document.activeElement) && ['KeyZ','KeyY'].includes(event.code)) { event.preventDefault(); undo(event.shiftKey || event.code === 'KeyY'); }
   else if (ctrl && editor.contains(document.activeElement) && ['KeyB','KeyI','KeyU'].includes(event.code)) { event.preventDefault(); command({KeyB:'bold',KeyI:'italic',KeyU:'underline'}[event.code]); }
   else if (event.key === 'Escape' && !$('notesDialog').open) {
     event.preventDefault();
     if(!$('menu').hidden){closePanels();$('menuButton').focus({preventScroll:true});}
     else if(document.querySelector('.format-popover:not([hidden])'))closePanels();
-    else leave('hide');
   }
 });
 async function boot() {

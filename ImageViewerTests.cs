@@ -48,12 +48,12 @@ public partial class MainWindow
             await viewer.ClickControl("#imageFullscreen");await viewer.WaitFor("fullscreen===true&&!fullscreenBusy");
             checks.Add(new{name="image-controls-fullscreen-borderless-and-offscreen",passed=viewer.IsImageFullscreen&&viewer.Surface.Margin.Left==0&&viewer.Browser.Margin.Left==0&&viewer.Browser.Clip is null&&viewer.ResizeMode==ResizeMode.NoResize&&viewer.Width==1200&&viewer.Height==800&&viewer.Left< -10000&&!viewer.Topmost&&!viewer.ShowActivated&&!viewer.ShowInTaskbar&&viewer.Opacity==0});
             await viewer.ClickControl("#fitButton");await viewer.Capture("image-fullscreen");
-            await viewer.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Escape\",\"code\":\"Escape\",\"windowsVirtualKeyCode\":27}");
+            await viewer.ClickControl("#imageFullscreen");
             await viewer.WaitFor("fullscreen===false&&!fullscreenBusy");
-            checks.Add(new{name="image-controls-escape-restores-window-without-closing",passed=!viewer.IsImageFullscreen&&!viewer.windowClosed&&new Rect(viewer.Left,viewer.Top,viewer.Width,viewer.Height)==bounds&&viewer.Surface.CornerRadius.TopLeft==6&&viewer.Browser.Clip is not null&&viewer.ResizeMode==ResizeMode.CanResize});
+            checks.Add(new{name="image-controls-button-restores-window-without-closing",passed=!viewer.IsImageFullscreen&&!viewer.windowClosed&&new Rect(viewer.Left,viewer.Top,viewer.Width,viewer.Height)==bounds&&viewer.Surface.CornerRadius.TopLeft==6&&viewer.Browser.Clip is not null&&viewer.ResizeMode==ResizeMode.CanResize});
             for(int i=0;i<3;i++)
             {
-                await viewer.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"F11\",\"code\":\"F11\",\"windowsVirtualKeyCode\":122}");await viewer.WaitFor("fullscreen===true&&!fullscreenBusy");
+                await viewer.ClickControl("#imageFullscreen");await viewer.WaitFor("fullscreen===true&&!fullscreenBusy");
                 await viewer.Script("setFullscreen(false)");await viewer.WaitFor("fullscreen===false&&!fullscreenBusy");
             }
             await Check("repeated-fullscreen-original-preserved","fullImage.naturalWidth===600&&fullImage.naturalHeight===200&&fitMode");

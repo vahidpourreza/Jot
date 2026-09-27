@@ -84,6 +84,9 @@ window.JotDesign = {
     element.setAttribute('stroke-linecap','round'); element.setAttribute('stroke-linejoin','round');
     element.setAttribute('aria-hidden','true'); element.classList.add('lucide');
     if(name==='color-circle')element.innerHTML='<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>';
+    else if(name==='pencil')element.innerHTML='<path d="m16 3 5 5-13 13-5 1 1-5ZM15 4l5 5"/>';
+    else if(name==='settings')element.innerHTML='<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>';
+    else if(name==='home')element.innerHTML='<path d="m3 10 9-7 9 7M5 9v12h5v-6h4v6h5V9"/>';
     else if(name==='line-height')element.innerHTML='<path d="M4 4v16m-3-3 3 3 3-3M1 7l3-3 3 3M11 5h11M11 12h11M11 19h11"/>';
     else if(name==='trash-2')element.innerHTML='<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>';
     else if(name==='maximize')element.innerHTML='<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>';

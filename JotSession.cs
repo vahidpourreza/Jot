@@ -9,14 +9,19 @@ internal sealed class JotSession(bool testing, string output)
     public bool Testing { get; } = testing;
     public string Output { get; } = output;
     internal bool PackageSmoke { get; init; }
+    internal bool ExerciseLifecycle { get; init; }
+    internal bool ExitProbe { get; init; }
     public NoteStore Store { get; } = new(testing ? Path.Combine(output, "data") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jot"));
     public ErrorLog Log { get; } = new(testing ? Path.Combine(output, "data") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jot"));
     public List<MainWindow> Windows { get; } = [];
     private Task<CoreWebView2Environment>? environment;
     private bool quitting;
+    private Task? quitTask;
+    private Task? startingWork;
+    private readonly HashSet<Task<MainWindow>> openingNotes=[];
     internal TrayMenuWindow? TrayMenu { get; private set; }
     internal readonly List<string> TestTrayActions=[];
-    internal async Task ShowTrayMenu(System.Drawing.Point anchor)
+    internal async Task ShowTrayMenu(System.Drawing.Point anchor,System.Drawing.Rectangle? iconBounds=null)
     {
         if(quitting)return;
         JsonElement? data=null;
@@ -26,24 +31,18 @@ internal sealed class JotSession(bool testing, string output)
         TrayMenu??=new TrayMenuWindow(Testing,ExecuteTrayAction,Log);
         var prefs=data;
         TrayMenu.ApplyTheme(prefs is { } p&&p.TryGetProperty("theme",out var theme)?theme.GetString()??"dark":"dark");
-        TrayMenu.OpenAt(anchor);
+        TrayMenu.OpenAt(anchor,iconBounds);
     }
     internal void UpdateTrayTheme(string theme)=>TrayMenu?.ApplyTheme(theme);
-    internal void OpenTrayVisibilitySettings()
-    {
-        if(Testing){TestTrayActions.Add("tray-visibility");return;}
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:taskbar"){UseShellExecute=true});
-    }
     internal async Task ExecuteTrayAction(string action)
     {
-        if(Testing&&action!="tray-visibility")TestTrayActions.Add(action);
+        if(Testing)TestTrayActions.Add(action);
         switch(action)
         {
             case "home":Home();break;
             case "new-note":await NewNote();break;
             case "settings":Settings();break;
-            case "tray-visibility":OpenTrayVisibilitySettings();break;
-            case "quit":if(Testing)await FlushNotes();else await Quit();break;
+            case "quit":if(Testing&&!ExerciseLifecycle&&!ExitProbe)await FlushNotes();else await Quit();break;
             default:throw new InvalidOperationException("Unknown tray action.");
         }
     }
@@ -74,17 +73,56 @@ internal sealed class JotSession(bool testing, string output)
         window.Reveal();
         return window;
     }
-    public async Task<MainWindow> NewNote()
+    public Task<MainWindow> NewNote()
+    {
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
+        var pending=NewNoteCore();openingNotes.Add(pending);
+        return ObserveCreation(pending);
+    }
+    private async Task<MainWindow> ObserveCreation(Task<MainWindow> pending)
+    {try{return await pending;}finally{openingNotes.Remove(pending);}}
+    private async Task<MainWindow> NewNoteCore()
     {
         var id = await Store.Create();
         await Changed(preferences: false);
-        return OpenNote(id);
+        return OpenNoteCore(id);
     }
-    public MainWindow OpenNote(string id)
+    public MainWindow OpenNote(string id,SavedNoteWindow? layout=null)
     {
-        var window = Windows.FirstOrDefault(window => window.Mode == "note" && window.NoteId == id) ?? new MainWindow(this, "note", id);
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
+        return OpenNoteCore(id,layout);
+    }
+    private MainWindow OpenNoteCore(string id,SavedNoteWindow? layout=null)
+    {
+        var window=Windows.FirstOrDefault(window=>window.Mode=="note"&&window.NoteId==id);
+        if(window is null){window=new MainWindow(this,"note",id);if(layout is not null)window.RestoreNoteLayout(layout);}
         window.Reveal();
         return window;
+    }
+    internal async Task StartWork()
+    {
+        var pending=startingWork??=RestoreWork();
+        try{await pending;}catch{if(ReferenceEquals(startingWork,pending))startingWork=null;throw;}
+    }
+    private async Task RestoreWork()
+    {
+        var saved=await Store.LoadWindowSession();
+        if(saved.Length==0){if(!quitting)await NewNote();return;}
+        foreach(var note in saved)OpenNoteCore(note.NoteId,note);
+    }
+    internal async Task ActivateWork()
+    {
+        if(quitting)return;
+        if(startingWork is null&&!Windows.Any(window=>window.Mode=="note")){await StartWork();return;}
+        if(startingWork is not null)await startingWork;
+        var visible=Windows.Where(window=>window.Mode=="note"&&window.IsVisible).ToArray();
+        if(visible.Length==0)await NewNote();else foreach(var window in visible)window.Reveal();
+    }
+    internal async Task PrepareQuit()
+    {
+        await FlushNotes();
+        await Store.SaveWindowSession(Windows.Where(window=>window.Mode=="note"&&window.IsVisible&&!window.HideRequested&&window.WindowState!=System.Windows.WindowState.Minimized).Select(window=>window.CaptureNoteLayout()));
+        await Store.Backup();
     }
     public MainWindow Image(string src)
     {
@@ -106,20 +144,36 @@ internal sealed class JotSession(bool testing, string output)
     }
     internal async Task FlushNotes()
     {
-        foreach (var window in Windows.Where(window => window.Mode == "note").ToArray()) await window.Flush();
+        foreach (var window in Windows.Where(window => window.Mode == "note").ToArray()) await window.Flush(quitting);
     }
-    public async Task Quit()
+    public Task Quit()
     {
-        if (quitting) return;
+        if(quitTask is {IsCompleted:false})return quitTask;
+        if(quitting)return Task.CompletedTask;
+        return quitTask=QuitCore();
+    }
+    internal async void RequestSystemQuit()
+    {
+        try{await Quit();}
+        catch(Exception error)
+        {
+            Log.Error("system-close",error);
+            foreach(var window in Windows.ToArray())window.Post(new{@event="warning",message="Could not save all notes. Jot is still open; please try Quit again."});
+        }
+    }
+    private async Task QuitCore()
+    {
         quitting = true;
         try
         {
-            await FlushNotes();
-            await Store.Backup();
+            if(startingWork is not null)await startingWork;
+            if(openingNotes.Count>0)await Task.WhenAll(openingNotes.ToArray());
+            foreach(var window in Windows.Where(window=>window.Mode=="note"))window.Post(new{@event="prepare-quit"});
+            await PrepareQuit();
             TrayMenu?.Close();TrayMenu=null;
             foreach (var window in Windows.ToArray()) window.ClosePermanently();
-            System.Windows.Application.Current.Shutdown();
+            if(!Testing||!ExerciseLifecycle)System.Windows.Application.Current.Shutdown();
         }
-        catch { quitting = false; throw; }
+        catch { quitting = false;foreach(var window in Windows.Where(window=>window.Mode=="note"))window.Post(new{@event="resume-editing"});throw; }
     }
 }

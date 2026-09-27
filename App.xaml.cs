@@ -9,9 +9,10 @@ public partial class App : System.Windows.Application
     private bool ownsInstance;
     private EventWaitHandle? activate;
     private RegisteredWaitHandle? activationListener;
-    internal static bool ShouldStartInTray(string[] args)=>args.Contains("--tray")&&!args.Contains("--self-test")&&!args.Contains("--package-smoke");
+    private JotSession? exitProbeSession;
+    internal static bool ShouldStartInTray(string[] args)=>args.Contains("--tray")&&!args.Contains("--self-test")&&!args.Contains("--package-smoke")&&!args.Contains("--exit-probe");
 
-    protected override void OnStartup(System.Windows.StartupEventArgs e)
+    protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
         // A self-test child deliberately terminates itself with a synthetic store.
@@ -30,7 +31,8 @@ public partial class App : System.Windows.Application
             Shutdown();return;
         }
         bool smoke=e.Args.Contains("--package-smoke");
-        bool test = e.Args.Contains("--self-test")||smoke;
+        bool exitProbe=e.Args.Contains("--exit-probe");
+        bool test = e.Args.Contains("--self-test")||smoke||exitProbe;
         if (!test)
         {
             instance = new Mutex(true, @"Local\Jot-personal-notes-v2", out ownsInstance);
@@ -45,16 +47,19 @@ public partial class App : System.Windows.Application
         var outputIndex = Array.IndexOf(e.Args, "--test-output");
         var output = outputIndex >= 0 && e.Args.Length > outputIndex + 1 ? e.Args[outputIndex + 1] : null;
         output ??= Path.Combine(Path.GetTempPath(), "Jot-tests-" + Guid.NewGuid().ToString("N"));
-        var session = new JotSession(test, output){PackageSmoke=smoke};
+        var session = new JotSession(test, output){PackageSmoke=smoke,ExitProbe=exitProbe};
+        if(exitProbe)exitProbeSession=session;
         DispatcherUnhandledException += (_, args) => session.Log.Error("dispatcher-unhandled", args.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, args) => {
             if (args.ExceptionObject is Exception exception) session.Log.Error("process-unhandled", exception);
         };
         TaskScheduler.UnobservedTaskException += (_, args) => session.Log.Error("task-unobserved", args.Exception);
         if (activate is not null)
-            activationListener = ThreadPool.RegisterWaitForSingleObject(activate, (_, _) => Dispatcher.BeginInvoke(() => session.Home()), null, Timeout.Infinite, false);
+            activationListener = ThreadPool.RegisterWaitForSingleObject(activate, (_, _) => Dispatcher.BeginInvoke(async () => {
+                try{await session.ActivateWork();}catch(Exception error){session.Log.Error("activate-work",error);session.Home().ShowStartupWarning();}
+            }), null, Timeout.Infinite, false);
         ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
-        var window = new MainWindow(session, "home", runTests: test&&!smoke);
+        var window = new MainWindow(session, "home", runTests: test&&!smoke&&!exitProbe);
         MainWindow = window;
         if (test)
         {
@@ -64,12 +69,26 @@ public partial class App : System.Windows.Application
             window.Top = -32000;
             window.Opacity = 0;
         }
-        if(ShouldStartInTray(e.Args))window.StartInTray();
-        else window.Reveal();
+        if(exitProbe)
+        {
+            window.StartInTray();
+            try{await window.RunExitProbe(e.Args);}
+            catch(Exception error){session.Log.Error("exit-probe",error);await File.WriteAllTextAsync(Path.Combine(output,"probe-error.txt"),error.ToString());Shutdown(1);}
+        }
+        else if(test)window.Reveal();
+        else
+        {
+            window.StartInTray(); // Keep the tray host without loading/showing Home.
+            if(!ShouldStartInTray(e.Args))
+                try{await session.StartWork();}
+                catch(Exception error){session.Log.Error("restore-work",error);window.ShowStartupWarning();window.Reveal();}
+        }
     }
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        if(exitProbeSession is { } probe)
+            File.WriteAllText(Path.Combine(probe.Output,"probe-exit.json"),System.Text.Json.JsonSerializer.Serialize(new{processId=Environment.ProcessId,exitCode=e.ApplicationExitCode,remainingWindows=probe.Windows.Count}));
         activationListener?.Unregister(null);
         activate?.Dispose();
         if (ownsInstance) instance?.ReleaseMutex();
