@@ -26,12 +26,12 @@ public partial class MainWindow
             await a.WaitFor("model.prefs.theme==='dark'");await b.WaitFor("model.prefs.theme==='dark'");
             checks.Add(new{name="global-theme-updates-existing-notes-without-changing-writing-settings",passed=await a.Script("model.prefs.theme==='dark'&&model.prefs.fontSize===18&&model.prefs.lineHeight===1.2&&model.prefs.toolbarVisible")=="true"&&await b.Script("JSON.stringify(activeNote().view)")==oldB});
             var id=await store.Create();var created=(await store.LoadNote(id))!.Value;
-            checks.Add(new{name="new-note-snapshots-writing-defaults-not-theme",passed=!created.GetProperty("view").TryGetProperty("theme",out _)&&created.GetProperty("view").GetProperty("fontSize").GetInt32()==24&&created.GetProperty("view").GetProperty("lineHeight").GetDouble()==2.2&&!created.GetProperty("view").GetProperty("toolbarVisible").GetBoolean()&&!created.GetProperty("view").GetProperty("pinned").GetBoolean()});await store.Delete(id);
+            checks.Add(new{name="new-note-inherits-writing-defaults-and-keeps-toolbar-pin-local",passed=!created.GetProperty("view").TryGetProperty("theme",out _)&&!created.GetProperty("view").TryGetProperty("fontSize",out _)&&!created.GetProperty("view").TryGetProperty("lineHeight",out _)&&!created.GetProperty("view").GetProperty("toolbarVisible").GetBoolean()&&!created.GetProperty("view").GetProperty("pinned").GetBoolean()});await store.Delete(id);
         }
         finally
         {
             using var prefs=JsonDocument.Parse(defaults);await store.SavePreferences(prefs.RootElement);await session.Changed();
-            await a.Script("setPreference(JSON.parse("+oldA+")).then(()=>window.viewRestored=true)");await a.WaitFor("window.viewRestored===true");
+            await a.Script("setPreference({fontSize:null,lineHeight:null,...JSON.parse("+oldA+")}).then(()=>window.viewRestored=true)");await a.WaitFor("window.viewRestored===true");
         }
         await VerifyNotePreferenceUpgrade(checks);
     }
@@ -72,7 +72,7 @@ public partial class MainWindow
         {
             await a.Script("delete activeNote().view.theme;closePanels()");
             viewer.ClosePermanently();session.TrayMenu?.Hide();
-            if(await Script("!!document.getElementById('settingsBack')")=="true")await GoToIndex();
+            if(await Script("window.JotWorkspace?.view==='settings'")=="true")await GoToIndex();
         }
     }
     private async Task VerifyNotePreferenceUpgrade(List<object> checks)

@@ -1,0 +1,33 @@
+/* Soft tint and the note-color strip are one appearance, not competing modes. */
+.workspace-header .workspace-tab[data-kind=note]{
+  --tab-ink:color-mix(in srgb,var(--tab-accent) 58%,var(--foreground));
+  --tab-soft-surface:color-mix(in srgb,var(--tab-accent) 12%,var(--workspace-inactive-tab));
+  --tab-soft-hover:color-mix(in srgb,var(--tab-accent) 16%,var(--workspace-hover-tab));
+  --tab-soft-selected:color-mix(in srgb,var(--tab-accent) 20%,var(--workspace-hover-tab));
+  background:var(--tab-soft-surface);
+  color:var(--workspace-tab-text);
+  border-color:color-mix(in srgb,var(--tab-ink) 16%,var(--workspace-tab-border));
+  box-shadow:none;
+}
+:root[data-theme=light] .workspace-header .workspace-tab[data-kind=note]{
+  --tab-ink:color-mix(in srgb,var(--tab-accent) 70%,var(--foreground));
+  --tab-soft-surface:color-mix(in srgb,var(--tab-accent) 4%,var(--background));
+  --tab-soft-hover:color-mix(in srgb,var(--tab-accent) 7%,var(--background));
+  --tab-soft-selected:color-mix(in srgb,var(--tab-accent) 10%,var(--background));
+}
+.workspace-header .workspace-tab[data-kind=note]:hover{
+  background:var(--tab-soft-hover);
+  border-color:color-mix(in srgb,var(--tab-ink) 30%,var(--workspace-tab-border));
+  color:var(--foreground);
+}
+.workspace-header .workspace-tab[data-kind=note][data-active=true]{
+  background:var(--tab-soft-selected);
+  border-color:color-mix(in srgb,var(--tab-ink) 48%,var(--workspace-tab-border));
+  color:var(--foreground);
+}
+.workspace-header .workspace-tab[data-kind=note][data-active=true] .tab-title{font-weight:500}
+.workspace-header .workspace-tab[data-kind=note] .tab-marker{color:var(--tab-ink)}
+.workspace-header .workspace-tab[data-kind=note] .tab-close{color:inherit;opacity:.65}
+.workspace-header .workspace-tab[data-kind=note] .tab-close:hover{background:color-mix(in srgb,var(--tab-ink) 12%,transparent);opacity:1}
+.workspace-header .workspace-tab[data-kind=note]>[role=tab]:focus-visible{outline-color:var(--tab-ink)}
+.workspace-header .workspace-tab[data-kind=note][data-dragging=true]{box-shadow:inset 0 0 0 2px var(--tab-ink)}

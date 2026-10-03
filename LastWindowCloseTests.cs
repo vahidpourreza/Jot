@@ -7,12 +7,13 @@ public partial class MainWindow
 {
     private async Task RunLastCloseProbe(string scenario)
     {
+        await session.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));
         await session.StartWork();var a=session.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");
         var b=await session.NewNote();await b.WaitFor("window.jotReady===true");
         foreach(var n in new[]{a,b})await n.Script("editor.innerHTML='<p>Final process draft فارسی English '+model.activeId+'</p>';onEdit();clearTimeout(saveTimer)");
         MainWindow last=b;string closeSelector="#hideButton";
         if(scenario is "last-home" or "last-settings")
-        {last=scenario=="last-home"?session.Home():session.Settings();await last.WaitFor("window.jotReady===true");closeSelector=scenario=="last-home"?"#homeClose":"#settingsClose";}
+        {last=scenario=="last-home"?session.Home():session.Settings();await last.WaitFor("window.jotReady===true");closeSelector="#workspaceClose";}
         else if(scenario=="last-image")
         {last=session.Image(JsonSerializer.Deserialize<string>(await a.Script("document.createElement('canvas').toDataURL()"))!);await last.WaitFor("window.jotReady===true");closeSelector="#imageClose";}
         await a.ClickControl("#hideButton");await WaitHidden(a);
@@ -36,6 +37,7 @@ public partial class MainWindow
             new MainWindow(s,"home").StartInTray();
             try
             {
+                await s.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));
                 await s.StartWork();var a=s.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");
                 await a.Script("editor.innerHTML='<p>Final last-window draft</p>';onEdit();clearTimeout(saveTimer)");
                 if(scenario.StartsWith("minimized-"))

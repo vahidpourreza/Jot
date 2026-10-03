@@ -29,7 +29,7 @@ internal static class AppIcon
     internal static byte[] RenderMonochrome(bool lightBackground) => lightBackground ? Dark.Value : Light.Value;
     internal static byte[] LoadColor() => PackagedColor.Value;
     internal static byte[] LoadMonochrome(bool lightBackground) => lightBackground ? PackagedDark.Value : PackagedLight.Value;
-    private static Rectangle ContentBounds(Bitmap bitmap)
+    internal static Rectangle ContentBounds(Bitmap bitmap)
     {
         var pixels=bitmap.LockBits(new Rectangle(0,0,bitmap.Width,bitmap.Height),ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
         int left=bitmap.Width,top=bitmap.Height,right=-1,bottom=-1;
@@ -55,29 +55,24 @@ internal static class AppIcon
         var pngs=new List<byte[]>();
         using var attributes=new ImageAttributes();
         attributes.SetWrapMode(WrapMode.TileFlipXY);
-        if(ink is Color color)
-        {
-            // A shared alpha master keeps light/dark tray silhouettes identical.
-            attributes.SetColorMatrix(new ColorMatrix(new float[][]{
-                [0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,1,0],
-                [color.R/255f,color.G/255f,color.B/255f,0,1]
-            }));
-        }
         foreach(int size in sizes)
         {
             using var bitmap=new Bitmap(size,size,PixelFormat.Format32bppArgb);
-            using var graphics=Graphics.FromImage(bitmap);
-            graphics.InterpolationMode=InterpolationMode.HighQualityBicubic;
-            graphics.PixelOffsetMode=PixelOffsetMode.HighQuality;
-            graphics.CompositingQuality=CompositingQuality.HighQuality;
-            graphics.CompositingMode=CompositingMode.SourceCopy;
-            // The colored taskbar mark uses more of its slot; the tray retains
-            // its existing breathing room and identical light/dark geometry.
-            int padding=ink is null ? Math.Max(0,(int)Math.Round(size*.015)) : Math.Max(1,(int)Math.Round(size*.06));
-            double scale=(size-2.0*padding)/Math.Max(bounds.Width,bounds.Height);
-            int width=Math.Max(1,(int)Math.Round(bounds.Width*scale)),height=Math.Max(1,(int)Math.Round(bounds.Height*scale));
-            var target=new Rectangle((size-width)/2,(size-height)/2,width,height);
-            graphics.DrawImage(source,target,bounds.X,bounds.Y,bounds.Width,bounds.Height,GraphicsUnit.Pixel,attributes);
+            using(var graphics=Graphics.FromImage(bitmap))
+            {
+                graphics.InterpolationMode=InterpolationMode.HighQualityBicubic;
+                graphics.PixelOffsetMode=PixelOffsetMode.HighQuality;
+                graphics.CompositingQuality=CompositingQuality.HighQuality;
+                graphics.CompositingMode=CompositingMode.SourceCopy;
+                // The colored taskbar mark uses more of its slot; the tray retains
+                // its existing breathing room and identical light/dark geometry.
+                int padding=ink is null ? Math.Max(0,(int)Math.Round(size*.015)) : Math.Max(1,(int)Math.Round(size*.06));
+                double scale=(size-2.0*padding)/Math.Max(bounds.Width,bounds.Height);
+                int width=Math.Max(1,(int)Math.Round(bounds.Width*scale)),height=Math.Max(1,(int)Math.Round(bounds.Height*scale));
+                var target=new Rectangle((size-width)/2,(size-height)/2,width,height);
+                graphics.DrawImage(source,target,bounds.X,bounds.Y,bounds.Width,bounds.Height,GraphicsUnit.Pixel,attributes);
+            }
+            if(ink is Color color)ApplyTrayInk(bitmap,color);
             using var buffer=new MemoryStream();bitmap.Save(buffer,ImageFormat.Png);pngs.Add(buffer.ToArray());
         }
         using var output=new MemoryStream();using var writer=new BinaryWriter(output);
@@ -92,5 +87,32 @@ internal static class AppIcon
         }
         foreach(var png in pngs)writer.Write(png);
         return output.ToArray();
+    }
+
+    private static void ApplyTrayInk(Bitmap bitmap,Color ink)
+    {
+        // Tint AFTER resampling. GDI+ bicubic interpolation can overshoot an
+        // input color matrix, producing bright/dark fringes around the fold.
+        // Keep the shared antialiased alpha, and give every visible pixel the
+        // exact same ink. This is export-only; runtime loads the packaged ICOs.
+        var pixels=bitmap.LockBits(new Rectangle(0,0,bitmap.Width,bitmap.Height),ImageLockMode.ReadWrite,PixelFormat.Format32bppArgb);
+        try
+        {
+            var row=new byte[bitmap.Width*4];
+            for(int y=0;y<bitmap.Height;y++)
+            {
+                var address=IntPtr.Add(pixels.Scan0,y*pixels.Stride);
+                Marshal.Copy(address,row,0,row.Length);
+                for(int x=0;x<bitmap.Width;x++)
+                {
+                    int p=x*4;bool visible=row[p+3]!=0;
+                    row[p]=visible?ink.B:(byte)0;
+                    row[p+1]=visible?ink.G:(byte)0;
+                    row[p+2]=visible?ink.R:(byte)0;
+                }
+                Marshal.Copy(row,0,address,row.Length);
+            }
+        }
+        finally { bitmap.UnlockBits(pixels); }
     }
 }

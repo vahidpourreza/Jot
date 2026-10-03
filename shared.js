@@ -1,9 +1,11 @@
 'use strict';
 window.JotBridge = (() => {
   let sequence = 0;
+  const documentId=crypto.randomUUID();
   const jobs = new Map(), listeners = new Set();
   const host = window.chrome?.webview;
   host?.addEventListener('message', ({data}) => {
+    if(data.documentId&&data.documentId!==documentId)return;
     if (data.event) { for (const listener of listeners) listener(data); return; }
     const job = jobs.get(data.id);
     if (!job) return;
@@ -15,19 +17,19 @@ window.JotBridge = (() => {
   });
   return {
     on: (listener) => listeners.add(listener),
-    send: (action,payload=null) => host?.postMessage({action,payload}),
+    send: (action,payload=null) => host?.postMessage({action,payload,documentId}),
     reportError: (error,operation='renderer',details={}) => {
       if(error?.logged)return;
       const safe={operation,name:error?.name||'Error',code:error?.code||'unknown',
         source:(details.source||location.pathname).split(/[\\/]/).pop(),line:details.line||0,column:details.column||0};
-      host?.postMessage({action:'log-error',payload:safe});
+      host?.postMessage({action:'log-error',payload:safe,documentId});
       if(error&&typeof error==='object')error.logged=true;
     },
     request: (action,payload=null) => new Promise((resolve,reject) => {
       if (!host) { reject(Object.assign(new Error('ارتباط با برنامه برقرار نیست.'),{operation:action})); return; }
       const id = ++sequence;
       const timer = setTimeout(() => { jobs.delete(id); const error=Object.assign(new Error('پاسخی از برنامه دریافت نشد.'),{operation:action,code:'bridge-timeout'});window.JotBridge.reportError(error,action);reject(error); },20000);
-      jobs.set(id,{resolve,reject,timer,action}); host.postMessage({id,action,payload});
+      jobs.set(id,{resolve,reject,timer,action}); host.postMessage({id,action,payload,documentId});
     })
   };
 })();
@@ -41,7 +43,7 @@ window.JotDesign = {
     const context=canvas.getContext('2d',{willReadFrequently:true});context.fillStyle=value;context.fillRect(0,0,1,1);
     return '#'+[...context.getImageData(0,0,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');
   },
-  defaults: {theme:'dark',fontSize:16,lineHeight:1.95,accent:'neutral',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en'},
+  defaults: {theme:'dark',fontSize:16,lineHeight:1.95,accent:'neutral',iconWeight:1.8,coloredIcons:false,toolbarVisible:true,language:'en',newNoteTarget:'tab',autoSaveFiles:false,globalShortcuts:false,workspacePinned:false},
   lineHeights: [1.2,1.5,1.75,1.95,2.2,2.5],
   stepLineHeight(value,step) {
     return step>0?(this.lineHeights.find(height=>height>value+.001)??2.5):([...this.lineHeights].reverse().find(height=>height<value-.001)??1.2);
@@ -83,7 +85,23 @@ window.JotDesign = {
     element.setAttribute('fill','none'); element.setAttribute('stroke','currentColor');
     element.setAttribute('stroke-linecap','round'); element.setAttribute('stroke-linejoin','round');
     element.setAttribute('aria-hidden','true'); element.classList.add('lucide');
-    if(name==='color-circle')element.innerHTML='<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>';
+    if(name.startsWith('window-')){
+      element.classList.add('window-control-icon');
+      element.setAttribute('viewBox','0 0 16 16');
+      element.setAttribute('stroke-linecap','butt');element.setAttribute('stroke-linejoin','miter');
+      if(name==='window-minimize')element.innerHTML='<path d="M3 8.5h10"/>';
+      else if(name==='window-maximize')element.innerHTML='<rect x="3.5" y="3.5" width="9" height="9"/>';
+      else if(name==='window-restore')element.innerHTML='<path d="M5.5 5.5v-3h8v8h-3"/><rect x="2.5" y="5.5" width="8" height="8"/>';
+      else if(name==='window-close')element.innerHTML='<path d="m3.5 3.5 9 9m0-9-9 9"/>';
+    }
+    else if(name==='color-circle')element.innerHTML='<circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/>';
+    else if(name==='chevron-down')element.innerHTML='<path d="m6 9 6 6 6-6"/>';
+    else if(name==='layout-grid')element.innerHTML='<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
+    else if(name==='panels-top-left')element.innerHTML='<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v6"/>';
+    else if(name==='external-link')element.innerHTML='<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>';
+    else if(name==='save')element.innerHTML='<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8"/>';
+    else if(name==='folder-open')element.innerHTML='<path d="M6 14h14l-2 7H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v3H8Z"/>';
+    else if(name==='folder'||name==='folder-plus')element.innerHTML='<path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"/>'+(name==='folder-plus'?'<path d="M12 10v6m-3-3h6"/>':'');
     else if(name==='pencil')element.innerHTML='<path d="m16 3 5 5-13 13-5 1 1-5ZM15 4l5 5"/>';
     else if(name==='settings')element.innerHTML='<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>';
     else if(name==='home')element.innerHTML='<path d="m3 10 9-7 9 7M5 9v12h5v-6h4v6h5V9"/>';
@@ -104,9 +122,30 @@ window.JotDesign = {
       if (!node.querySelector('svg,.app-mark')) node.append(this.icon(node.dataset.icon));
     });
   },
-  drag(element) {
+  drag(element,{isMaximized=()=>false,onToggle}={}) {
+    let gesture=null;
+    const interactive=target=>target.closest('button,input,select,a,[contenteditable=true]');
+    const clear=()=>{const previous=gesture;gesture=null;if(previous&&element.hasPointerCapture(previous.id))element.releasePointerCapture(previous.id);};
     element.addEventListener('pointerdown',event=>{
-      if(event.button===0&&!event.target.closest('button,input,select,a')) JotBridge.request('drag').catch(()=>{});
+      if(event.button!==0||event.isPrimary===false||interactive(event.target))return;
+      if(!isMaximized()){JotBridge.request('drag').catch(()=>{});return;}
+      const rect=element.getBoundingClientRect();
+      gesture={id:event.pointerId,x:event.clientX,y:event.clientY,anchorX:(event.clientX-rect.left)/rect.width,anchorY:event.clientY-rect.top};
+      if(event.isTrusted)element.setPointerCapture(event.pointerId);
+      event.preventDefault();
     });
+    element.addEventListener('pointermove',event=>{
+      if(!gesture||event.pointerId!==gesture.id)return;
+      if(!(event.buttons&1)){clear();return;}
+      if(Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)<6)return;
+      const previous=gesture;clear();
+      JotBridge.request('drag',{restore:true,anchorX:previous.anchorX,anchorY:previous.anchorY}).catch(()=>{});
+    });
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])element.addEventListener(type,clear);
+    element.addEventListener('dblclick',event=>{
+      if(event.button!==0||interactive(event.target)||!onToggle)return;
+      event.preventDefault();clear();Promise.resolve(onToggle()).catch(()=>{});
+    });
+    window.addEventListener('blur',clear);
   }
 };

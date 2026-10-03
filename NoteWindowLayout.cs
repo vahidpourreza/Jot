@@ -13,7 +13,7 @@ public partial class MainWindow
     internal SavedNoteWindow CaptureNoteLayout()
     {
         if(Mode!="note"||NoteId is null)throw new InvalidOperationException("Only notes have a work layout.");
-        if((IsNoteFullscreen||IsFullscreenTransitioning)&&fullscreenNoteLayout is not null)return fullscreenNoteLayout;
+        if((IsNoteFullscreen||IsFullscreenTransitioning)&&fullscreenNoteLayout is not null)return fullscreenNoteLayout with{NoteId=NoteId,Tabs=null};
         var handle=new WindowInteropHelper(this).Handle;
         if(handle==0||!GetNoteRect(handle,out var rect))throw new InvalidOperationException("Could not remember the note window position.");
         return new(NoteId,rect.Left,rect.Top,rect.Right-rect.Left,rect.Bottom-rect.Top);

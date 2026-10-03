@@ -43,12 +43,12 @@ public partial class MainWindow
             checks.Add(new{name="context-ime-start-during-copy-never-cuts",passed=await note.Script("editor.textContent==='Selected text فارسی changed'")=="true"});await note.Script("composing=false");
             await note.Script("editor.focus();getSelection().selectAllChildren(editor);rememberSelection();JotEditorMenu.open(30,60,null,true);JotEditorMenu.run('cut').then(()=>window.cancelledCutDone=true);document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");await note.WaitFor("window.cancelledCutDone===true");
             checks.Add(new{name="context-escape-cancels-delayed-cut",passed=await note.Script("editor.textContent==='Selected text فارسی changed'")=="true"});note.TestClipboardDelayMs=0;
-            await note.Script("document.getElementById('error').hidden=true;JotDesign.apply({...model.prefs,theme:'light'});editor.focus();getSelection().selectAllChildren(editor);rememberSelection();JotEditorMenu.open(90,80,null,true)");await note.Capture("editor-context-light");
+            await note.Script("JotToast.dismiss();document.getElementById('error').hidden=true;JotDesign.apply({...model.prefs,theme:'light'});editor.focus();getSelection().selectAllChildren(editor);rememberSelection();JotEditorMenu.open(90,80,null,true)");await note.Capture("editor-context-light");
         }
         finally
         {
             note.TestClipboardDelayMs=0;note.TestClipboardWriteAccepted=true;note.Width=width;note.Height=height;
-            await note.Script("JotEditorMenu.close();flushTypingHistory();editor.innerHTML="+before+";bookmark=null;onEdit('command');JotDesign.apply(model.prefs);document.getElementById('error').hidden=true;saveNow().then(()=>window.contextRestored=true)");await note.WaitFor("window.contextRestored===true");
+            await note.Script("JotEditorMenu.close();JotToast.dismiss();flushTypingHistory();editor.innerHTML="+before+";bookmark=null;onEdit('command');JotDesign.apply(model.prefs);document.getElementById('error').hidden=true;saveNow().then(()=>window.contextRestored=true)");await note.WaitFor("window.contextRestored===true");
         }
         var text="فارسی English";var html="<p>فارسی <b>English</b></p>";var data=new DataObject();data.SetData(DataFormats.UnicodeText,text);data.SetData(DataFormats.Html,RichClipboard.HtmlFormat(html));var read=ClipboardReader.Read(data);
         checks.Add(new{name="context-native-reader-decodes-persian-utf8-cfhtml",passed=read.text==text&&read.html==html&&read.image is null});

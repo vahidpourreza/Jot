@@ -81,7 +81,7 @@ public partial class MainWindow
         graphics.Clear(System.Drawing.Color.FromArgb(245,245,245));
         using var dark=new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(24,24,24));graphics.FillRectangle(dark,0,145,410,125);graphics.FillRectangle(dark,0,400,410,125);
         using var font=new System.Drawing.Font("Segoe UI",10);
-        graphics.DrawString("Jot · selected B / native icon exports",font,System.Drawing.Brushes.Black,12,6);
+        graphics.DrawString("Jot · faceted stack / native icon exports",font,System.Drawing.Brushes.Black,12,6);
         bool colorVisible=true,transparent=true,fullSlot=true;
         foreach(bool light in new[]{true,false})
         {
@@ -103,7 +103,7 @@ public partial class MainWindow
         using(var largeStream=new MemoryStream(AppIcon.RenderColor()))
         using(var large=new System.Drawing.Icon(largeStream,128,128))
         using(var bitmap=large.ToBitmap())graphics.DrawImageUnscaled(bitmap,480,40);
-        graphics.DrawString("B · folded stack",font,System.Drawing.Brushes.Black,445,190);
+        graphics.DrawString("Approved faceted stack",font,System.Drawing.Brushes.Black,425,190);
         graphics.DrawString("128 px packaged icon",font,System.Drawing.Brushes.Black,445,212);
         graphics.DrawString("Tighter taskbar crop",font,System.Drawing.Brushes.Black,445,234);
         graphics.DrawString("Color app / taskbar",font,System.Drawing.Brushes.Black,445,270);

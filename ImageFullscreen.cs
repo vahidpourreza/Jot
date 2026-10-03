@@ -39,19 +39,23 @@ public partial class MainWindow
         if(handle==0||!GetNoteRect(handle,out var rect))throw new InvalidOperationException("Could not read the window bounds.");
         return PixelBounds.FromLTRB(rect.Left,rect.Top,rect.Right,rect.Bottom);
     }
+    private void ApplyFullscreenChrome(bool fullscreen)
+    {
+        double normal=fullscreen?0:1;
+        Surface.Margin=new Thickness(8*normal);Surface.CornerRadius=new CornerRadius(6*normal);Surface.BorderThickness=new Thickness(normal);
+        Surface.Effect=normal==1?fullscreenRestoreEffect:null;Browser.Margin=new Thickness(9*normal);Browser.Clip=null;
+    }
     private void MoveFullscreenFrame(PixelBounds bounds,bool fullscreen)
     {
         if(testing&&(bounds.Right>=-10000||bounds.Bottom>=-10000||Topmost))
             throw new InvalidOperationException("Refusing a fullscreen test on the desktop.");
-        double normal=fullscreen?0:1;
-        Surface.Margin=new Thickness(8*normal);Surface.CornerRadius=new CornerRadius(6*normal);Surface.BorderThickness=new Thickness(normal);
-        Surface.Effect=normal==1?fullscreenRestoreEffect:null;Browser.Margin=new Thickness(9*normal);Browser.Clip=null;
+        ApplyFullscreenChrome(fullscreen);
         var handle=new WindowInteropHelper(this).Handle;
         if(!SetWindowPos(handle,0,bounds.X,bounds.Y,bounds.Width,bounds.Height,0x0004|0x0010|0x0020))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"Could not resize the note window.");
         // Native resize schedules layout; use its known size for clipping.
         var dpi=System.Windows.Media.VisualTreeHelper.GetDpi(this);
-        if(normal>0)Browser.Clip=new System.Windows.Media.RectangleGeometry(new Rect(0,0,Math.Max(0,bounds.Width/dpi.DpiScaleX-18*normal),Math.Max(0,bounds.Height/dpi.DpiScaleY-18*normal)),5*normal,5*normal);
+        if(!fullscreen)Browser.Clip=new System.Windows.Media.RectangleGeometry(new Rect(0,0,Math.Max(0,bounds.Width/dpi.DpiScaleX-18),Math.Max(0,bounds.Height/dpi.DpiScaleY-18)),5,5);
         if(testing)FullscreenFrameSamples.Add(ReadWindowPixels());
     }
     private async Task<bool> SetWindowFullscreen(bool enabled,PixelBounds? dragBounds=null)
@@ -65,6 +69,34 @@ public partial class MainWindow
         {
             if(closingPermanently||enabled==IsWindowFullscreen)return IsWindowFullscreen;
             start=ReadWindowPixels();
+            if(Mode is "home" or "note")
+            {
+                // Keep the real Windows maximize state. A work-area-sized Normal
+                // window breaks Win+Down, snap and the native caption drag path.
+                if(enabled)
+                {
+                    RememberNormalWindowBounds();
+                    if(!normalWindowBoundsKnown)throw new InvalidOperationException("Could not remember the normal window size.");
+                }
+                IsFullscreenTransitioning=true;IsWindowFullscreen=enabled;
+                ApplyFullscreenChrome(enabled);
+                if(testing)FullscreenFrameSamples.Clear();
+                if(enabled)
+                {
+                    if(testing)MoveFullscreenFrame(new PixelBounds(-32000,-32000,1200,760),true);
+                    else WindowState=WindowState.Maximized;
+                }
+                else
+                {
+                    WindowState=WindowState.Normal;
+                    Left=fullscreenRestoreBounds.Left;Top=fullscreenRestoreBounds.Top;
+                    Width=fullscreenRestoreBounds.Width;Height=fullscreenRestoreBounds.Height;
+                    MoveFullscreenFrame(dragBounds??fullscreenRestorePixels,false);
+                    fullscreenNoteLayout=null;
+                }
+                NotifyWindowPresentation();
+                return IsWindowFullscreen;
+            }
             if(enabled)
             {
                 fullscreenRestoreState=WindowState;
@@ -77,7 +109,9 @@ public partial class MainWindow
                 if(Mode=="note")fullscreenNoteLayout=CaptureNoteLayout();
             }
             IsFullscreenTransitioning=true;IsWindowFullscreen=enabled;ResizeMode=ResizeMode.NoResize;WindowState=WindowState.Normal;
-            var target=enabled?(testing?new PixelBounds(-32000,-32000,1200,800):System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).Bounds):dragBounds??fullscreenRestorePixels;
+            // The image viewer intentionally uses true monitor fullscreen.
+            var monitor=System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle);
+            var target=enabled?(testing?new PixelBounds(-32000,-32000,1200,Mode=="image"?800:760):Mode=="image"?monitor.Bounds:monitor.WorkingArea):dragBounds??fullscreenRestorePixels;
             if(testing)FullscreenFrameSamples.Clear();
             if(!enabled)
             {
@@ -90,7 +124,7 @@ public partial class MainWindow
                 fullscreenNoteLayout=null;
             }
             else MoveFullscreenFrame(target,true);
-            if(Mode=="note")Post(new{@event="note-fullscreen",enabled=IsNoteFullscreen});
+            NotifyWindowPresentation();
             return IsWindowFullscreen;
         }
         catch(OperationCanceledException) when(closingPermanently){return IsWindowFullscreen;}
@@ -100,11 +134,11 @@ public partial class MainWindow
             {
                 IsWindowFullscreen=previous;
                 try{MoveFullscreenFrame(start,previous);}catch(Exception error){session.Log.Error("fullscreen-rollback",error,Mode);}
-                ResizeMode=previous?ResizeMode.NoResize:fullscreenRestoreResize;
+                if(Mode=="image")ResizeMode=previous?ResizeMode.NoResize:fullscreenRestoreResize;
                 if(!previous)fullscreenNoteLayout=null;
             }
             throw;
         }
-        finally{IsFullscreenTransitioning=false;if(!closingPermanently){UpdateLayout();RoundWindow();}fullscreenGate.Release();}
+        finally{IsFullscreenTransitioning=false;if(!closingPermanently){UpdateLayout();RoundWindow();RememberNormalWindowBounds();}fullscreenGate.Release();}
     }
 }

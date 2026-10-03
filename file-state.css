@@ -1,0 +1,9 @@
+.file-identity{display:flex;align-items:center;gap:10px;min-height:30px;flex:none;padding:5px 15px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted-foreground)}
+.file-identity[hidden]{display:none}.file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--foreground)}
+.file-status{flex:none;white-space:nowrap}.file-identity[data-dirty=true] .file-status,.file-identity[data-error=true] .file-status{color:var(--foreground)}
+.tab-file-status{width:7px;height:7px;flex:none;border-radius:50%;background:currentColor;opacity:.8}.tab-file-status[hidden]{display:none}
+.workspace-tab[data-file-error=true] .tab-file-status{background:#e4a441;opacity:1}
+.card-note-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;color:var(--muted-foreground)}
+.card-heading{display:flex;align-items:center;gap:7px;min-width:0}.card-heading .card-title{flex:1;min-width:0}.card-file-dirty{margin-inline-start:auto;font-size:10px;flex:none}
+.workspace-pin[aria-pressed=true] svg{fill:currentColor}.workspace-pin[aria-pressed=true]{color:var(--foreground)}
+@media(max-width:450px){#workspacePin{display:none}}

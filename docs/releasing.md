@@ -34,6 +34,8 @@ Measured on this developer machine: the first fully verified release run took 41
 
 ## Runtime acquisition and pinning
 
+Workspace cleanup retains the verified CAB and existing installer but removes expanded runtime copies and release staging. The next explicit release re-extracts the CAB locally. Historical verification reports/screenshots mentioned below are now preserved at their original relative paths inside `test-results/verification-evidence-20260928-092558.zip`; disposable test installations and browser profiles were removed.
+
 `packaging/webview2-runtime.json` identifies Microsoft's official x64 Fixed Version CAB. On the first successful acquisition, the script checks the extracted Microsoft executable's Authenticode signature and version, records the CAB SHA-256 in that manifest, and preserves the cached download. Keep the populated manifest in Git so subsequent machines enforce the same bytes. Future runtime upgrades require intentionally updating its version, URL, and checksum (or bootstrapping a newly selected version), then repeating the full validation.
 
 Do not disable TLS/certificate verification to obtain a runtime. `-RuntimeCab` is an inbound-file alternative for a CAB downloaded directly from Microsoft's WebView2 page. A nonempty pinned checksum is enforced before extraction. First acquisition still requires a valid Microsoft executable signature and matching version.

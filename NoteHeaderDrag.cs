@@ -38,7 +38,7 @@ public partial class MainWindow
         }
         if(IsWindowFullscreen)
         {
-            if(!IsNoteFullscreen||payload.ValueKind!=JsonValueKind.Object||
+            if(Mode is not ("home" or "note")||payload.ValueKind!=JsonValueKind.Object||
                !payload.TryGetProperty("restore",out var restore)||!restore.GetBoolean())return;
             double x=payload.GetProperty("anchorX").GetDouble(),y=payload.GetProperty("anchorY").GetDouble();
             if(!double.IsFinite(x)||!double.IsFinite(y))return;

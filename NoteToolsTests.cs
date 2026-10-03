@@ -10,19 +10,23 @@ public partial class MainWindow
         var s=new JotSession(true,Path.Combine(testOutput,"note-tools")){ExerciseLifecycle=true};
         try
         {
+            await s.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));
             var a=await s.NewNote();var b=await s.NewNote();await a.WaitFor("window.jotReady===true");await b.WaitFor("window.jotReady===true");
             a.Width=480;a.Height=360;await Task.Delay(80);
             var bounds=new Rect(a.Left,a.Top,a.Width,a.Height);var pixelBounds=a.CaptureNoteLayout();
             var peerBounds=new Rect(b.Left,b.Top,b.Width,b.Height);var peerHtml=await b.Script("editor.innerHTML");
             await a.Script("editor.innerHTML='<p>Currency enum حذف شد.</p><p>English body</p>';bookmark=null;onEdit('command');saveNow().then(()=>window.fixtureSaved=true)");await a.WaitFor("window.fixtureSaved===true");
             var html=await a.Script("editor.innerHTML");var view=(await s.Store.LoadNote(a.NoteId!))!.Value.GetProperty("view").GetRawText();
+            var minimizes=a.TestHostActions.Count(action=>action=="minimize");await a.ClickControl("#minimizeButton");
+            for(int i=0;i<100&&a.TestHostActions.Count(action=>action=="minimize")==minimizes;i++)await Task.Delay(20);
+            checks.Add(new{name="note-minimize-button-invokes-native-action-without-closing",passed=a.TestHostActions.Count(action=>action=="minimize")==minimizes+1&&!a.windowClosed&&a.IsVisible&&html==await a.Script("editor.innerHTML")});
             await a.ClickControl("#fullscreenButton");await a.WaitFor("noteFullscreen&&!fullscreenBusy");
-            checks.Add(new{name="note-fullscreen-fills-isolated-monitor-without-topmost",passed=a.IsNoteFullscreen&&!a.IsImageFullscreen&&a.Width==1200&&a.Height==800&&a.Surface.Margin.Left==0&&a.Browser.Margin.Left==0&&a.Browser.Clip is null&&a.ResizeMode==ResizeMode.NoResize&&!a.Topmost&&a.Opacity==0&&a.Left< -10000});
-            checks.Add(new{name="note-fullscreen-has-visible-exit-and-unchanged-content",passed=await a.Script("document.getElementById('fullscreenButton').getAttribute('aria-pressed')==='true'&&document.getElementById('fullscreenButton').title==='Exit fullscreen'")=="true"&&await a.Script("editor.innerHTML")==html});
+            checks.Add(new{name="note-maximize-fills-isolated-work-area-without-topmost",passed=a.IsNoteFullscreen&&!a.IsImageFullscreen&&a.Width==1200&&a.Height==760&&a.Surface.Margin.Left==0&&a.Browser.Margin.Left==0&&a.Browser.Clip is null&&a.ResizeMode==ResizeMode.CanResize&&!a.Topmost&&a.Opacity==0&&a.Left< -10000});
+            checks.Add(new{name="note-fullscreen-has-familiar-restore-and-unchanged-content",passed=await a.Script("document.getElementById('fullscreenButton').getAttribute('aria-pressed')==='true'&&document.getElementById('fullscreenButton').title==='Restore'&&document.querySelector('#fullscreenButton svg').innerHTML===JotDesign.icon('window-restore').innerHTML")=="true"&&await a.Script("editor.innerHTML")==html});
             checks.Add(new{name="note-fullscreen-does-not-change-other-notes-or-view-preferences",passed=!b.IsWindowFullscreen&&peerBounds==new Rect(b.Left,b.Top,b.Width,b.Height)&&peerHtml==await b.Script("editor.innerHTML")&&(await s.Store.LoadNote(a.NoteId!))!.Value.GetProperty("view").GetRawText()==view});
             await s.PrepareQuit();
             checks.Add(new{name="fullscreen-session-keeps-original-small-note-bounds",passed=(await s.Store.LoadWindowSession()).Single(w=>w.NoteId==a.NoteId)==pixelBounds});
-            await a.Reload();checks.Add(new{name="note-fullscreen-button-resynchronizes-after-renderer-reload",passed=await a.Script("noteFullscreen&&document.getElementById('fullscreenButton').title==='Exit fullscreen'")=="true"});
+            await a.Reload();checks.Add(new{name="note-fullscreen-button-resynchronizes-after-renderer-reload",passed=await a.Script("noteFullscreen&&document.getElementById('fullscreenButton').title==='Restore'")=="true"});
             await a.Capture("note-fullscreen");
             await a.ClickControl("#hideButton");for(int i=0;i<100&&a.IsVisible;i++)await Task.Delay(20);
             checks.Add(new{name="fullscreen-note-can-hide-without-quitting-peer",passed=!a.IsVisible&&b.IsVisible&&!a.windowClosed});s.OpenNote(a.NoteId!);await a.WaitFor("!app.inert");
@@ -86,7 +90,7 @@ public partial class MainWindow
         Check("keyboard-reachable-at-end",await note.Script("document.activeElement.dataset.action==='home'")=="true");
         Check("visible-within-small-menu-after-keyboard-scroll",await note.Script("(()=>{const m=document.getElementById('editorMenu').getBoundingClientRect(),b=document.activeElement.getBoundingClientRect();return b.top>=m.top&&b.bottom<=m.bottom;})()")=="true");
         await note.ClickControl("#editorMenu [data-action=home]");await note.WaitFor("document.getElementById('editorMenu').hidden");
-        await home.WaitFor("window.jotReady===true&&!!document.getElementById('homeNew')&&homeData.notes.some(n=>n.plain.includes('Latest Home menu draft'))");
+        await home.WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='home'&&homeData.notes.some(n=>n.plain.includes('Latest Home menu draft'))");
         Check("opens-existing-home-from-settings",s.Windows.Count==windows&&s.Windows.Single(w=>w.Mode=="home")==home&&!home.IsSettingsView&&home.IsVisible);
         Check("saves-latest-draft-before-navigation",(await s.Store.LoadNote(note.NoteId!))!.Value.GetProperty("plain").GetString()!.Contains("Latest Home menu draft"));
         Check("keeps-note-open-and-content-unchanged",note.IsVisible&&await note.Script("editor.textContent==='Latest Home menu draft'")=="true");

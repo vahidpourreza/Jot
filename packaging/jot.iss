@@ -47,20 +47,31 @@ AllowNoIcons=yes
 UsePreviousAppDir=yes
 UsePreviousTasks=yes
 Uninstallable=yes
-ChangesAssociations=no
+ChangesAssociations=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "notefiles"; Description: "Open .jot files with Jot and add Jot to Open with for .txt"; GroupDescription: "Note files:"; Flags: unchecked
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "tests\*,*.pdb"; Flags: ignoreversion recursesubdirs
 
 [Icons]
-Name: "{autoprograms}\Jot"; Filename: "{app}\Jot.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\Jot"; Filename: "{app}\Jot.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\Jot"; Filename: "{app}\Jot.exe"; WorkingDir: "{app}"; AppUserModelID: "Jot.PersonalNotes"
+Name: "{autodesktop}\Jot"; Filename: "{app}\Jot.exe"; WorkingDir: "{app}"; AppUserModelID: "Jot.PersonalNotes"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Jot.exe"; Description: "Launch Jot"; Flags: nowait postinstall skipifsilent unchecked
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\.jot"; ValueType: string; ValueName: ""; ValueData: "Jot.Note"; Flags: uninsdeletevalue; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Note"; ValueType: string; ValueName: ""; ValueData: "Jot note"; Flags: uninsdeletekey; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Note\DefaultIcon"; ValueType: string; ValueData: "{app}\assets\jot-file.ico,0"; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Note\shell\open\command"; ValueType: string; ValueData: """{app}\Jot.exe"" --open-file ""%1"""; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Text"; ValueType: string; ValueName: ""; ValueData: "Text note in Jot"; Flags: uninsdeletekey; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Text\DefaultIcon"; ValueType: string; ValueData: "{app}\Jot.exe,0"; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\Jot.Text\shell\open\command"; ValueType: string; ValueData: """{app}\Jot.exe"" --open-file ""%1"""; Tasks: notefiles
+Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: none; ValueName: "Jot.Text"; Flags: uninsdeletevalue; Tasks: notefiles
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

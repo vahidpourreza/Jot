@@ -1,0 +1,91 @@
+/* Web Sonner surfaces/type; Jot preference: bottom-right without a close icon. */
+.jot-toaster {
+  --toast-surface: var(--popover, var(--card));
+  --toast-text: var(--popover-foreground, var(--foreground));
+  --toast-radius: .45rem;
+  position: fixed;
+  inset: auto 14px var(--toast-bottom, 54px) auto;
+  width: min(356px, calc(100vw - 28px));
+  max-height: var(--toast-max-height, calc(100vh - 108px));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: IRANSansX, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  overflow: visible;
+  z-index: 9999;
+  pointer-events: none;
+}
+.jot-toaster::backdrop { background: transparent; pointer-events: none; }
+.jot-toast-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: var(--toast-max-height, calc(100vh - 108px));
+  margin: -8px;
+  padding: 8px;
+  list-style: none;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  pointer-events: auto;
+}
+.jot-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 16px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--toast-radius);
+  background: var(--toast-surface);
+  color: var(--muted-foreground);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  pointer-events: auto;
+  overflow-wrap: anywhere;
+  animation: jot-toast-in 160ms ease-out both;
+}
+.jot-toast-icon { display: flex; align-items: center; width: 16px; height: 16px; flex: none; margin-inline: -3px 4px; color: var(--muted-foreground); }
+.jot-toast-icon svg { width: 16px; height: 16px; margin-inline-start: -1px; }
+.jot-toast[data-type=loading] .jot-toast-icon svg { animation: jot-toast-spin .7s linear infinite; }
+.jot-toast svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.jot-toast[data-type=error] > .jot-toast-icon { color: #f87171; }
+:root[data-theme=light] .jot-toast[data-type=error] > .jot-toast-icon { color: #dc2626; }
+.jot-toast-content { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.jot-toast-title { color: var(--muted-foreground); font-size: 12px; font-weight: 500; line-height: 18px; }
+.jot-toast-description { color: var(--muted-foreground); font-size: 11.2px; font-weight: 400; line-height: 16px; white-space: pre-line; }
+.jot-toast:focus-visible, .jot-toast-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.jot-toast-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  min-height: 24px;
+  max-width: 42%;
+  margin-inline-start: auto;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--toast-text);
+  color: var(--toast-surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  cursor: pointer;
+}
+.jot-toast-action:disabled { opacity: .65; cursor: wait; }
+.jot-toast-action[aria-busy=true]::before { content: ''; width: 10px; height: 10px; flex: none; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: jot-toast-spin .7s linear infinite; }
+.jot-toast-announcer { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@keyframes jot-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes jot-toast-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .jot-toast { animation: none; }
+  .jot-toast-action[aria-busy=true]::before, .jot-toast[data-type=loading] .jot-toast-icon svg { animation: none; }
+}

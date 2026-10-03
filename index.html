@@ -8,16 +8,22 @@
   <link rel="icon" href="assets/jot.ico">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="workspace.css">
+  <link rel="stylesheet" href="notifications.css">
+  <link rel="stylesheet" href="note-personalization.css"><link rel="stylesheet" href="file-state.css">
+  <link rel="stylesheet" href="workspace-editor.css">
+  <link rel="stylesheet" href="writing-settings.css">
+  <link rel="stylesheet" href="document-note.css">
 </head>
 <body>
   <main id="app" class="app" aria-label="Jot">
     <header id="handle" class="handle">
       <button id="newButton" class="icon-button" data-icon="plus" aria-label="New note" title="New note"></button>
       <div class="window-actions">
-        <button id="menuButton" class="icon-button" data-icon="ellipsis" aria-label="More options" title="More options" aria-expanded="false" aria-controls="menu"></button>
-        <button id="fullscreenButton" class="icon-button" data-icon="maximize" aria-label="Enter fullscreen" title="Enter fullscreen" aria-pressed="false" aria-busy="false"></button>
+        <button id="menuButton" class="icon-button" data-icon="ellipsis" aria-label="More settings" title="More settings" aria-expanded="false" aria-controls="menu"></button>
         <button id="pinButton" class="icon-button" data-icon="pin" aria-label="Keep on top" title="Keep on top" aria-pressed="false"></button>
-        <button id="hideButton" class="icon-button" data-icon="x" aria-label="Close note" title="Close note (keeps your note saved)"></button>
+        <button id="minimizeButton" class="icon-button" data-icon="window-minimize" aria-label="Minimize" title="Minimize"></button>
+        <button id="fullscreenButton" class="icon-button" data-icon="window-maximize" aria-label="Maximize" title="Maximize" aria-pressed="false" aria-busy="false"></button>
+        <button id="hideButton" class="icon-button window-close" data-icon="window-close" aria-label="Close note" title="Close note (keeps your note saved)"></button>
       </div>
     </header>
     <div id="writingArea" class="writing-area">
@@ -45,14 +51,16 @@
     <div id="colorMenu" class="format-popover color-popover surface" aria-label="Text color" hidden dir="ltr">
       <div id="colors" class="colors" role="group" aria-label="Text color"></div>
     </div>
-    <section id="menu" class="menu surface" aria-label="More options" hidden dir="ltr">
+    <section id="menu" class="menu surface" aria-label="More settings" hidden dir="ltr">
       <div id="noteColors" class="note-color-grid" role="group" aria-label="Note header color" aria-description="All 19 colors are shown. Use the arrow keys to move and Enter to choose."></div>
       <div id="menuActions" class="note-menu-actions">
+        <button id="noteIconButton" class="menu-item" title="Choose an emoji for this note"><span id="noteIconPreview"></span><span>Note emoji</span></button>
         <button id="menuNotesButton" class="menu-item" title="Home"><span data-icon="home"></span><span>Home</span></button>
         <button id="themeButton" class="menu-item"><span data-icon="sun"></span><span id="themeLabel">Light mode</span></button>
-        <div class="menu-item size-row"><span data-icon="type"></span><span class="size-label">Font size</span><button id="smallerButton" class="icon-button" aria-label="Decrease font size">−</button><output id="fontSize" title="Editor text size in pixels">16 px</output><button id="largerButton" class="icon-button" aria-label="Increase font size">+</button></div>
-        <div class="menu-item size-row"><span data-icon="line-height"></span><span class="size-label">Line height</span><button id="tighterLinesButton" class="icon-button" aria-label="Decrease line height">−</button><output id="lineHeight" title="Line height relative to text size">1.95×</output><button id="looserLinesButton" class="icon-button" aria-label="Increase line height">+</button></div>
+        <div class="menu-item size-row writing-option"><span data-icon="type"></span><div class="size-label"><span>Font size</span><button id="defaultFontSize" class="writing-reset" type="button" aria-label="Use default font size">Use default</button></div><div class="writing-stepper"><button id="smallerButton" class="icon-button" aria-label="Decrease font size">−</button><output id="fontSize" title="Editor text size in pixels">16 px</output><button id="largerButton" class="icon-button" aria-label="Increase font size">+</button></div></div>
+        <div class="menu-item size-row writing-option"><span data-icon="line-height"></span><div class="size-label"><span>Line height</span><button id="defaultLineHeight" class="writing-reset" type="button" aria-label="Use default line height">Use default</button></div><div class="writing-stepper"><button id="tighterLinesButton" class="icon-button" aria-label="Decrease line height">−</button><output id="lineHeight" title="Line height relative to text size">1.95×</output><button id="looserLinesButton" class="icon-button" aria-label="Increase line height">+</button></div></div>
         <div class="menu-item direction-row"><span class="size-label">Direction</span><div class="direction-choices" role="group" aria-label="Current paragraph direction"><button data-paragraph-direction="auto" aria-pressed="true" title="Automatic direction for the current or selected paragraphs">Auto</button><button data-paragraph-direction="ltr" aria-pressed="false" title="Left-to-right current or selected paragraphs">LTR</button><button data-paragraph-direction="rtl" aria-pressed="false" title="Right-to-left current or selected paragraphs">RTL</button></div></div>
+        <div class="menu-item alignment-row"><span>Alignment</span><div class="alignment-choices" role="group" aria-label="Current or selected paragraph alignment"><button data-paragraph-alignment="auto" aria-pressed="true" title="Align automatically with paragraph direction" aria-label="Automatic alignment">Auto</button><button data-paragraph-alignment="left" data-icon="align-left" aria-pressed="false" title="Align left" aria-label="Align left"></button><button data-paragraph-alignment="center" data-icon="align-center" aria-pressed="false" title="Center" aria-label="Center"></button><button data-paragraph-alignment="right" data-icon="align-right" aria-pressed="false" title="Align right" aria-label="Align right"></button><button data-paragraph-alignment="justify" data-icon="align-justify" aria-pressed="false" title="Justify" aria-label="Justify"></button></div></div>
         <div class="menu-separator" role="separator"></div>
         <button id="exportButton" class="menu-item" title="Save this note as an HTML file"><span data-icon="download"></span><span>Export</span></button>
         <button id="copyButton" class="menu-item" title="Copy all text, formatting, and images"><span data-icon="copy"></span><span>Copy</span></button>
@@ -75,6 +83,6 @@
     <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     <div id="error" class="error" role="alert" hidden></div>
   </main>
-  <script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="context-menus.js"></script><script src="bidi.js"></script><script src="renderer.js"></script><script src="editor-menu.js"></script>
+  <script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="notifications.js"></script><script src="shortcut-bindings.js"></script><script src="context-menus.js"></script><script src="bidi.js"></script><script src="assets/emoji/emoji-data.js"></script><script src="note-personalization.js"></script><script src="workspace-tabs.js"></script><script src="renderer.js"></script><script src="editor-menu.js"></script><script src="notes-files.js"></script><script src="document-heading.js"></script><script src="writing-tools.js"></script><script src="app-shortcuts.js"></script>
 </body>
 </html>

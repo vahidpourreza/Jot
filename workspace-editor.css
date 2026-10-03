@@ -1,0 +1,13 @@
+/* Home editors share the workspace surface. Floating notes retain their
+   compact colored headers and existing controls. */
+.app[data-workspace=true] .handle{height:40px;padding:0 14px;background:var(--background);border-bottom:1px solid var(--border);color:var(--muted-foreground);cursor:default}
+.app[data-workspace=true] .handle::before{display:none}
+.app[data-workspace=true] .handle .icon-button,.app[data-workspace=true][data-active-window=false] .handle .icon-button{height:28px;color:var(--muted-foreground);opacity:1;transform:none}
+.app[data-workspace=true] .handle .icon-button:hover{background:var(--muted);color:var(--foreground)}
+.app[data-workspace=true] .handle #newButton{gap:6px;width:auto;padding:4px 7px;margin-inline-start:-7px;font-size:12px;font-weight:400}
+.app[data-workspace=true] .handle #newButton svg{width:14px;height:14px}
+.app[data-workspace=true] .handle #menuButton{margin-inline-end:-7px}
+.app[data-workspace=true] .handle #menuButton[aria-expanded=true]{background:var(--muted);color:var(--foreground)}
+.app[data-workspace=true] .handle .window-actions{opacity:1}
+.app[data-workspace=true] .quiet-footer{border-top:1px solid var(--border);padding-inline:12px;background:var(--background)}
+.app[data-workspace=true] .editor{padding:18px 22px 28px}

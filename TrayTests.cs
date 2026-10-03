@@ -71,9 +71,9 @@ public partial class MainWindow
             menu.ActionButton(key).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await menu.LastAction;
         }
         int homeCount=session.Windows.Count(window=>window.Mode=="home");
-        await Click("settings");await WaitFor("window.jotReady===true&&document.getElementById('settingsHandle')!==null");
+        await Click("settings");await WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='settings'");
         checks.Add(new{name="tray-settings-reuses-index-window",passed=IsSettingsView&&session.Windows.Count(window=>window.Mode=="home")==homeCount&&!menu.IsVisible});
-        await Click("home");await WaitFor("window.jotReady===true&&document.getElementById('cards')!==null");
+        await Click("home");await WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='home'");
         checks.Add(new{name="tray-notes-reveals-existing-index",passed=!IsSettingsView&&session.Windows.Count(window=>window.Mode=="home")==homeCount});
         var existingIds=session.Windows.Select(window=>window.NoteId).ToHashSet();
         await Click("new-note");var fresh=session.Windows.Single(window=>window.Mode=="note"&&!existingIds.Contains(window.NoteId));

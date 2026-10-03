@@ -17,17 +17,17 @@
   });
   await test('note-header-has-left-add-right-controls-and-no-app-icon',()=>{
     const buttons=[...document.querySelectorAll('#handle .window-actions>button')];
-    assert(buttons.map(button=>button.id).join(',')==='menuButton,fullscreenButton,pinButton,hideButton','wrong button order');
+    assert(buttons.map(button=>button.id).join(',')==='menuButton,pinButton,minimizeButton,fullscreenButton,hideButton','wrong button order');
     const bounds=buttons.map(button=>button.getBoundingClientRect());
     assert(bounds.every((rect,i)=>i===0||rect.left>bounds[i-1].left),'wrong control ordering');
     const add=$('newButton').getBoundingClientRect(),header=$('handle').getBoundingClientRect();
     assert(add.left-header.left<12&&add.right<bounds[0].left,'add is not at left');
     assert(header.right-bounds.at(-1).right<12,'close is not at the right edge');
     assert(!$('closeAppButton')&&!$('quitButton')&&!document.querySelector('#handle .drag-grip'),'obsolete note controls');
-    assert($('hideButton').dataset.icon==='x','hide must use X');
+    assert($('hideButton').dataset.icon==='window-close','close must use the familiar window X');
     assert(!$('menuButton').closest('.quiet-footer'),'More still in footer');
     assert(!$('notesButton')&&!document.querySelector('#handle [data-icon=jot]'),'note app icon remains');
-    assert([...document.querySelectorAll('#handle button')].map(button=>button.id).join(',')==='newButton,menuButton,fullscreenButton,pinButton,hideButton','keyboard order differs from visual order');
+    assert([...document.querySelectorAll('#handle button')].map(button=>button.id).join(',')==='newButton,menuButton,pinButton,minimizeButton,fullscreenButton,hideButton','keyboard order differs from visual order');
   });
   await test('sticky-menu-styling-preserves-every-existing-option',()=>{
     $('menuButton').click();
@@ -52,7 +52,8 @@
     assert(new Set(rects.map(r=>r.top)).size===1,'palette is not a single row');
     assert(rects.every(r=>r.left>=palette.left&&r.right<=palette.right+.5&&r.top>=palette.top&&r.bottom<=palette.bottom),'a color is outside the visible palette');
     assert(buttons.every((button,i)=>button.contains(document.elementFromPoint(rects[i].x+rects[i].width/2,rects[i].y+rects[i].height/2))),'a color is covered or unreachable');
-    assert(rects.every(r=>r.width>=15&&r.height===40),'color targets too small');
+    assert(rects.every(r=>r.width>=12&&r.height===30),'color targets too small');
+    assert(rects.every((r,i)=>i===0||r.left-rects[i-1].right>=1.5),'adjacent colors need a visible separator');
     assert($('noteColors').scrollWidth<=$('noteColors').clientWidth&&$('noteColors').scrollHeight<=$('noteColors').clientHeight,'palette requires scrolling');
     const current=buttons.find(button=>button.getAttribute('aria-pressed')==='true');
     assert(document.activeElement===current,'selected color was not focused');
@@ -93,7 +94,9 @@
     assert(!$('copyTextButton'),'plain-copy option remains');
     assert($('exportButton').textContent.trim()==='Export'&&$('deleteButton').textContent.trim()==='Delete','menu labels are not concise');
     assert(getComputedStyle($('themeButton')).fontSize==='12px','theme text is not compact');
-    assert(document.querySelector('.size-label').textContent==='Font size'&&$('fontSize').textContent.endsWith(' px'),'font-size units missing');
+    const fontOption=$('fontSize').closest('.writing-option');
+    assert(fontOption.querySelector('.size-label>span').textContent==='Font size'&&/^\d+ px$/.test($('fontSize').textContent),'font-size caption or pixel units missing');
+    assert(fontOption.querySelector('#defaultFontSize').ariaLabel==='Use default font size','font-size inheritance action missing');
     const theme=model.prefs.theme;
     for(const mode of ['light','dark']){
       await setAppTheme(mode);
@@ -196,7 +199,7 @@
     }
     await setAppTheme(previousTheme);
   });
-  await test('format-bold-italic-underline-color',async()=>{write('<p>Selected words</p>');select('Selected');for(const command of ['bold','italic','underline'])document.querySelector('[data-command="'+command+'"]').click();document.querySelector('[data-color="#60a5fa"]').click();assert(/font-weight: (bold|700)|<b>/.test(editor.innerHTML),'bold');assert(editor.innerHTML.includes('italic'),'italic');assert(editor.innerHTML.includes('underline'),'underline');assert(editor.innerHTML.includes('96, 165, 250'),'color');await sleep(160);assert(JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color)==='#60a5fa','T glyph does not show selected text color');});
+  await test('format-bold-italic-underline-color',async()=>{write('<p>Selected words</p>');select('Selected');for(const command of ['bold','italic','underline'])document.querySelector('[data-command="'+command+'"]').click();document.querySelector('[data-color="#60a5fa"]').click();assert(/font-weight: (bold|700)|<b>/.test(editor.innerHTML),'bold');assert(editor.innerHTML.includes('italic'),'italic');assert(editor.innerHTML.includes('underline'),'underline');assert(editor.innerHTML.includes('96, 165, 250'),'color');for(let i=0;i<80&&JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color)!=='#60a5fa';i++)await sleep(25);assert(JotDesign.hexColor(getComputedStyle($('colorMenuButton')).color)==='#60a5fa','Color indicator does not show selected text color');});
   await test('inline-strikethrough-toggles-without-clear-formatting',()=>{write('<p>More tools inline</p>');select('tools');const button=document.querySelector('[data-command=strikeThrough]');button.click();assert(/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough failed');button.click();assert(!/line-through|<strike>|<s>/.test(editor.innerHTML),'strikethrough did not toggle off');assert(!document.querySelector('[data-command=removeFormat]'),'Clear formatting remains');});
   await test('neutral-css-before-preferences-load',()=>{
     const root=document.documentElement,original=root.style.cssText,theme=root.dataset.theme;
@@ -305,7 +308,7 @@
     assert(app.dataset.saveState==='saved'&&editor.innerHTML===before,'clipboard error changed save state or content');
     assert(!$('saveLabel'),'visible save state');
     await request('clipboard-write',copyPayload(true));
-    assert($('error').hidden,'copy success did not dismiss clipboard error');
+    assert(!JotToast.has('note-error'),'copy success did not dismiss clipboard error toast');
   });
   await test('large-note-save',async()=>{
     const html=editor.innerHTML;const start=performance.now();write('<p>'+('A mixed یادداشت line. '.repeat(3000))+'</p>');await saveNow();const elapsed=performance.now()-start;

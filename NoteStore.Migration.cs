@@ -47,7 +47,7 @@ internal sealed partial class NoteStore
                 Execute(connection,null,$"PRAGMA application_id={ApplicationId};PRAGMA user_version={SchemaVersion};");
                 if(legacy is { } data)
                 {
-                    ReplaceModel(connection,data);
+                    ReplaceModel(connection,PreserveLegacyWritingDefaults(data));
                     VerifyMigration(data,ReadModel(connection,null,false));
                 }
                 if(Scalar(connection,null,"PRAGMA quick_check;") as string!="ok")throw new InvalidDataException("The new database failed its integrity check. The original JSON was left untouched.");

@@ -16,6 +16,7 @@ public partial class MainWindow
             var path=Path.Combine(testOutput,"close-matrix",kind);var s=Create(path);JotSession? restart=null;
             try
             {
+                await s.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));
                 await s.StartWork();var a=s.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");
                 var notes=new List<MainWindow>{a};if(kind is not ("home-only" or "last-note-closed" or "reopened" or "minimized-note")){var b=await s.NewNote();notes.Add(b);await b.WaitFor("window.jotReady===true");}
                 foreach(var n in notes)await n.Script("editor.innerHTML='<p>Final draft فارسی English '+model.activeId+'</p>';onEdit();clearTimeout(saveTimer)");
@@ -32,7 +33,7 @@ public partial class MainWindow
                 var expected=notes.Where(n=>n.IsVisible&&!n.HideRequested&&n.WindowState!=WindowState.Minimized).Select(n=>n.NoteId!).ToHashSet();
                 if(kind=="settings-and-notes")
                 {
-                    var settings=s.Settings();await settings.WaitFor("window.jotReady===true&&!!document.getElementById('settingsQuit')");
+                    var settings=s.Settings();await settings.WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='settings'");
                     await settings.ClickControl("#settingsQuit");await Until(()=>s.Windows.Count==0);
                 }
                 else if(kind=="last-note-closed")await Until(()=>s.Windows.Count==0);
@@ -40,7 +41,8 @@ public partial class MainWindow
                 Check(kind+"-real-quit-closes-all-own-windows",s.Windows.Count==0);
                 foreach(var n in notes)Check(kind+"-complete-last-text-"+n.NoteId,(await s.Store.LoadNote(n.NoteId!))!.Value.GetProperty("plain").GetString()!.Contains("Final draft فارسی English "+n.NoteId));
                 restart=Create(path);await restart.StartWork();var opened=restart.Windows.Where(w=>w.Mode=="note").ToArray();foreach(var w in opened)await w.WaitFor("window.jotReady===true");
-                Check(kind+"-restart-never-opens-home",restart.Windows.Single(w=>w.Mode=="home") is {IsVisible:false} dormantHome&&dormantHome.Browser.CoreWebView2 is null);
+                var restoredWorkspace=restart.Windows.Single(w=>w.Mode=="home");
+                Check(kind+"-restart-retains-only-an-open-settings-workspace",kind=="settings-and-notes"?restoredWorkspace.IsVisible&&restoredWorkspace.IsSettingsView&&restoredWorkspace.SettingsTabOpen:!restoredWorkspace.IsVisible&&restoredWorkspace.Browser.CoreWebView2 is null);
                 Check(kind+"-exact-note-set-or-one-new-blank",expected.Count>0?opened.Select(w=>w.NoteId!).ToHashSet().SetEquals(expected):opened.Length==1&&!notes.Any(n=>n.NoteId==opened[0].NoteId)&&await opened[0].Script("editor.textContent.trim()===''")=="true");
                 Check(kind+"-always-offscreen",opened.All(w=>w.Left< -10000&&w.Opacity==0&&!w.ShowActivated&&!w.Topmost));
             }
@@ -51,6 +53,7 @@ public partial class MainWindow
             var path=Path.Combine(testOutput,"close-matrix",kind);var s=Create(path);JotSession? restart=null;
             try
             {
+                await s.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));
                 await s.StartWork();var a=s.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");a.TestSaveDelayMs=250;
                 await a.Script("editor.innerHTML='<p>Before</p>';onEdit();saveNow().then(()=>window.baseSaved=true)");await a.WaitFor("window.baseSaved===true");
                 if(kind is "close-quit-race" or "reopen-during-close")

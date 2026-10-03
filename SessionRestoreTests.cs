@@ -14,9 +14,9 @@ public partial class MainWindow
         void Check(string name,bool passed)=>checks.Add(new{name="work-session-"+name,passed});
         try
         {
-            var first=NewSession();await first.StartWork();
+            var first=NewSession();await first.Store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));await first.StartWork();
             var a=first.Windows.Single(w=>w.Mode=="note");await a.WaitFor("window.jotReady===true");
-            Check("fresh-launch-opens-empty-note-with-home-dormant",first.Windows.Single(w=>w.Mode=="home") is {IsVisible:false} home&&home.Browser.CoreWebView2 is null&&await a.Script("editor.textContent.trim()===''")=="true");
+            Check("separate-mode-fresh-launch-opens-empty-note-with-home-dormant",first.Windows.Single(w=>w.Mode=="home") is {IsVisible:false} home&&home.Browser.CoreWebView2 is null&&await a.Script("editor.textContent.trim()===''")=="true");
             await a.Script("editor.innerHTML='<p>Restore فارسی English</p><p><b>Keep formatting</b></p>';onEdit();setPreference({fontSize:21,lineHeight:2.2,toolbarVisible:false,pinned:true}).then(()=>setNoteColor('blue')).then(()=>saveNow()).then(()=>window.resumeSaved=true)");await a.WaitFor("window.resumeSaved===true");
             var savedHtml=await a.Script("editor.innerHTML");a.Width=480;a.Height=340;
             var b=await first.NewNote();await b.WaitFor("window.jotReady===true");b.Width=540;b.Height=380;
@@ -44,7 +44,7 @@ public partial class MainWindow
             var emptyRestart=NewSession();await emptyRestart.StartWork();var empty=emptyRestart.Windows.Single(w=>w.Mode=="note");await empty.WaitFor("window.jotReady===true");
             Check("empty-session-starts-one-new-blank-not-an-old-note",!expected.Contains(empty.NoteId)&&empty.NoteId!=hidden.NoteId&&await empty.Script("editor.textContent.trim()===''")=="true"&&(await emptyRestart.Store.LoadIndex())!.Value.GetProperty("notes").GetArrayLength()==4);
             var openedHome=emptyRestart.Home();await openedHome.WaitFor("window.jotReady===true");
-            Check("home-remains-explicitly-accessible-with-gear-icon",await openedHome.Script("document.querySelector('#homeHandle .index-brand span').textContent==='Home'&&document.getElementById('settingsButton').dataset.icon==='settings'&&!!document.querySelector('#settingsButton circle')")=="true");
+            Check("home-remains-explicitly-accessible-with-logo-and-gear",await openedHome.Script("!!document.querySelector('#workspaceHandle img[alt=Jot]')&&document.getElementById('settingsButton').dataset.icon==='settings'&&!!document.querySelector('#settingsButton circle')")=="true");
             empty.Hide();await emptyRestart.ActivateWork();Check("relaunch-with-all-work-hidden-creates-one-blank",emptyRestart.Windows.Count(w=>w.Mode=="note"&&w.IsVisible)==1&&emptyRestart.Windows.Any(w=>w.Mode=="note"&&w.IsVisible&&w.NoteId!=empty.NoteId));
             foreach(var w in emptyRestart.Windows.Where(w=>w.Mode=="note"))await w.WaitFor("window.jotReady===true");
             CloseSession(emptyRestart);

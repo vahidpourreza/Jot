@@ -1,5 +1,10 @@
 @font-face{font-family:IRANSansX;src:url('assets/IRANSansX-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:IRANSansX;src:url('assets/IRANSansX-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+/* The editor uses the same glyphs with compact native-selection metrics.
+   IRANSansX's original 150% ascent/descent box spills over 1.2x lines. Keep
+   the note's chosen line height, while allowing Persian dots/descenders. */
+@font-face{font-family:JotEditor;src:url('assets/IRANSansX-Regular.woff2') format('woff2');font-weight:400;font-display:swap;ascent-override:80%;descent-override:38%;line-gap-override:0%}
+@font-face{font-family:JotEditor;src:url('assets/IRANSansX-Bold.woff2') format('woff2');font-weight:700;font-display:swap;ascent-override:80%;descent-override:38%;line-gap-override:0%}
 /* Shared foundations: Web/app/globals.css and components/ui/button.tsx. */
 :root{color-scheme:dark;--background:#171717;--foreground:oklch(.985 0 0);--card:oklch(.205 0 0);--muted:oklch(.269 0 0);--muted-foreground:oklch(.708 0 0);--border:oklch(1 0 0 / 10%);--primary:oklch(.922 0 0);--primary-foreground:oklch(.205 0 0);--ring:oklch(.7 0 0);--radius:4px;--editor-size:16px;font-family:IRANSansX,'Segoe UI',sans-serif}
 :root[data-theme=light]{color-scheme:light;--primary:oklch(.205 0 0);--primary-foreground:oklch(.985 0 0);--ring:oklch(.55 0 0);--background:#fff;--foreground:oklch(.145 0 0);--card:#fff;--muted:oklch(.97 0 0);--muted-foreground:oklch(.556 0 0);--border:oklch(.922 0 0)}
@@ -13,7 +18,7 @@ button,input{font:inherit}button{cursor:pointer;user-select:none;color:inherit}b
 .icon-button:hover:not(:disabled),.text-button:hover:not(:disabled),.menu-item:hover:not(:disabled){background:var(--muted);color:var(--foreground)}.icon-button[aria-pressed=true],.icon-button[aria-expanded=true]{background:var(--muted);color:var(--foreground)}
 .app-button{padding:4px;opacity:.75}.app-button:hover{opacity:1}.app-button>img{width:22px;height:22px}.icon{width:16px;height:16px;display:block}.icon img{width:100%;height:100%}img.lucide{width:16px;height:16px;filter:invert(1);opacity:.85}:root[data-theme=light] img.lucide{filter:none}
 .writing-area{flex:1;min-height:0;position:relative;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;overscroll-behavior:contain}
-.editor{font-size:var(--editor-size);line-height:1.95;padding:15px 23px 28px;min-height:100%;outline:none;overflow-wrap:anywhere;white-space:pre-wrap;caret-color:var(--foreground);text-align:start}
+.editor{font-family:JotEditor,IRANSansX,'Segoe UI',sans-serif;font-size:var(--editor-size);line-height:1.95;padding:15px 23px 28px;min-height:100%;outline:none;overflow-wrap:anywhere;white-space:pre-wrap;caret-color:var(--foreground);text-align:start}
 .editor>*{margin:0 0 .55em}.editor p,.editor div,.editor li,.editor blockquote,.editor h2{unicode-bidi:plaintext;text-align:start}.editor p:empty::before{content:'\200b'}
 .editor h2{font-size:1.35em;font-weight:700;line-height:1.6}.editor strong,.editor b{font-weight:700}.editor ul,.editor ol{padding-inline-start:1.6em}.editor blockquote{padding-inline-start:14px;border-inline-start:3px solid var(--primary);color:var(--muted-foreground)}
 .editor pre{font:13px/1.8 Consolas,monospace;direction:ltr;text-align:left;unicode-bidi:isolate;background:var(--muted);border-radius:var(--radius);padding:12px;white-space:pre-wrap}.editor img{max-width:100%;height:auto;border-radius:var(--radius);vertical-align:middle;display:inline-block}.editor a{color:inherit;text-decoration:underline}.editor ::selection{background:color-mix(in srgb,var(--primary) 48%,transparent)}

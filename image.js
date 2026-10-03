@@ -1,8 +1,8 @@
 'use strict';
 const $=id=>document.getElementById(id),request=JotBridge.request;
 const stage=$('imageStage'),canvas=$('imageCanvas'),fullImage=$('fullImage');
-let zoom=1,fitMode=true,fullscreen=false,fullscreenBusy=false,drag=null,resizeFrame=0,copyStatusTimer=0;
-function error(e){JotBridge.reportError(e,'image');$('imageError').textContent=JotI18n.text(e.message);$('imageError').hidden=false;}
+let zoom=1,fitMode=true,fullscreen=false,fullscreenBusy=false,drag=null,resizeFrame=0;
+function error(e){JotBridge.reportError(e,'image');$('imageError').textContent=JotI18n.text(e.message);$('imageError').hidden=true;JotToast.error($('imageError').textContent,{id:'image-error'});}
 function layout(){
   if(!fullImage.naturalWidth)return;
   const w=stage.clientWidth,h=stage.clientHeight;
@@ -31,12 +31,12 @@ $('fitButton').onclick=()=>fit(true);$('actualButton').onclick=()=>fit(false);
 $('zoomIn').onclick=()=>setZoom(zoom*1.25);$('zoomOut').onclick=()=>setZoom(zoom/1.25);
 $('imageFullscreen').onclick=()=>setFullscreen();$('imageClose').onclick=()=>request('hide').catch(error);
 async function copyImage(){
-  const b=$('imageCopy'),status=$('imageCopyStatus');if(b.disabled)return;
-  clearTimeout(copyStatusTimer);b.disabled=true;b.ariaBusy='true';b.title='Copying original…';status.textContent='Copying original…';status.hidden=false;
+  const b=$('imageCopy');if(b.disabled)return;
+  b.disabled=true;b.ariaBusy='true';b.title='Copying original…';JotToast.loading('Copying original image…',{id:'image-copy'});
   try{
     if(await request('clipboard-write',{html:'<img src="'+fullImage.src+'">',text:'',image:fullImage.src})===false)throw new Error('Copy was interrupted. Please try again.');
-    status.textContent='Copied';copyStatusTimer=setTimeout(()=>status.hidden=true,1100);
-  }catch(e){status.hidden=true;error(e);}
+    JotToast.dismiss('image-error');JotToast.success('Image copied',{id:'image-copy'});
+  }catch(e){JotToast.dismiss('image-copy');error(e);}
   finally{b.disabled=false;b.removeAttribute('aria-busy');b.title='Copy original image';}
 }
 $('imageCopy').onclick=copyImage;

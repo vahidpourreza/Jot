@@ -1,0 +1,246 @@
+[
+  {
+    "name": "custom-monochrome-icon-legible-at-small-sizes",
+    "passed": true
+  },
+  {
+    "name": "colored-app-icon-visible-in-all-small-sizes",
+    "passed": true
+  },
+  {
+    "name": "taskbar-artwork-fills-icon-slot",
+    "passed": true
+  },
+  {
+    "name": "native-window-uses-high-resolution-colored-icon",
+    "passed": true
+  },
+  {
+    "name": "light-dark-tray-shape-is-identical",
+    "passed": true
+  },
+  {
+    "name": "packaged-icons-match-generated-assets",
+    "passed": true
+  },
+  {
+    "name": "executable-icon-includes-eight-native-resolutions",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-color-master-is-exact-approved-image",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-solid-flap-in-master",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-transparent-separator",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-transparent-exterior",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-16px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-16px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-16px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-20px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-20px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-20px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-24px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-24px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-24px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-32px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-32px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-32px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-48px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-48px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-48px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-64px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-64px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-64px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-128px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-128px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-128px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-256px-solid-fold",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-256px-identical-alpha",
+    "passed": true
+  },
+  {
+    "name": "tray-fold-256px-uniform-ink",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-256px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-128px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-64px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-48px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-32px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-24px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-20px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-executable-contains-current-16px-frame",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-home-loads-current-color-master",
+    "passed": true
+  },
+  {
+    "name": "approved-icon-offscreen-no-user-windows-or-renderer-errors",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1.25-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1.25-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1.25-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1.25-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1.5-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1.5-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-1.5-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-1.5-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-2-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-2-dark",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-visible-corner-meets-icon-2-light",
+    "passed": true
+  },
+  {
+    "name": "tray-real-window-expanded-menu-keeps-anchor-2-light",
+    "passed": true
+  }
+]

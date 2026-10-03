@@ -1,0 +1,27 @@
+.note-symbol{flex:none;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
+.note-emoji{font-family:'Segoe UI Emoji',sans-serif;font-size:16px;line-height:1}
+.note-icon-dialog{box-sizing:border-box;width:360px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:auto;padding:14px;color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:10px;overscroll-behavior:contain}
+.note-icon-dialog::backdrop{background:#0005}
+.note-icon-dialog h2{font-size:15px;margin:0}
+.note-emoji-search,.note-emoji-filters select{box-sizing:border-box;min-width:0;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);padding:7px 9px;font:inherit;font-size:12px}
+.note-emoji-search{display:block;width:100%;margin:10px 0 8px}
+.note-emoji-filters{display:flex;gap:7px;margin-bottom:9px}.note-emoji-filters select:first-child{flex:1}.note-emoji-filters select:last-child{width:112px;flex:none}
+.note-icon-choices{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-height:min(240px,35vh);overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;align-content:start;padding:2px;overscroll-behavior:contain}
+.note-icon-choices[hidden]{display:none}
+.note-icon-choices button{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;overflow:hidden;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--foreground);height:34px;padding:0}
+.note-icon-choices button:hover{background:var(--muted)}
+.note-icon-choices button[aria-pressed=true]{border-color:var(--foreground);background:var(--muted)}
+.note-icon-choices .note-symbol{width:19px;height:19px}.note-icon-choices .note-emoji{font-size:21px;width:auto;max-width:100%;overflow:hidden}
+.note-icon-dialog button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.note-custom-emoji{display:flex;gap:7px;margin-top:9px}.note-custom-emoji input{min-width:0;flex:1;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);padding:7px 9px;font:inherit;font-size:12px}.note-custom-emoji button{width:auto;padding:6px 11px}
+.note-emoji-paging{display:flex;align-items:center;gap:3px;margin-top:7px}.note-emoji-paging>span{flex:1;color:var(--muted-foreground);font-size:11px}.note-emoji-paging .icon-button{width:27px;height:27px;flex:none}.note-emoji-paging button:disabled{opacity:.35}
+.note-emoji-preview{display:flex;align-items:center;gap:9px;min-height:29px;border-top:1px solid var(--border);padding-top:9px;margin:5px 0 0;font-size:12px}.note-emoji-preview>span:last-child{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted-foreground)}.note-emoji-preview .note-emoji{font-size:21px;width:25px;height:25px}
+.note-emoji-empty{padding:20px 4px;margin:0;color:var(--muted-foreground);font-size:12px;line-height:1.6}
+.note-icon-hint{color:var(--muted-foreground);font-size:11px;line-height:1.5;margin:9px 0 0}
+#noteIconError{color:#f87171;font-size:12px;line-height:1.5;margin:9px 0 0}
+.note-icon-dialog .pending{position:relative}.note-icon-dialog .pending::after{content:'';position:absolute;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:note-icon-saving .7s linear infinite}.note-icon-dialog .pending>*{opacity:0}
+@keyframes note-icon-saving{to{transform:rotate(360deg)}}
+@media(max-width:340px){.note-icon-dialog{padding:12px}.note-emoji-filters{gap:5px}.note-emoji-filters select{font-size:11px;padding:7px 5px}.note-emoji-filters select:last-child{width:95px}.note-icon-choices{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.alignment-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.alignment-choices{display:flex;align-items:center;gap:2px;flex:none}.alignment-choices button{display:flex;align-items:center;justify-content:center;min-width:28px;height:28px;border:0;border-radius:4px;background:transparent;color:var(--muted-foreground);padding:4px}.alignment-choices button:first-child{font-size:10px;padding-inline:5px;min-width:34px}
+.alignment-choices button:hover{background:var(--muted);color:var(--foreground)}.alignment-choices button[aria-pressed=true]{background:color-mix(in srgb,var(--foreground) 10%,transparent);color:var(--foreground)}.alignment-choices svg{width:15px;height:15px}

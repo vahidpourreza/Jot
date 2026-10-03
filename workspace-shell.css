@@ -1,0 +1,12 @@
+.persistent-workspace{display:flex;flex-direction:column}
+.persistent-workspace>.workspace-header{padding-inline:6px 0;flex:none}
+#workspaceViews{flex:1;min-height:0;position:relative;overflow:hidden}
+#workspaceViews>.workspace-view{position:absolute;inset:0;height:100%;min-height:0}
+#workspaceDialogs{display:contents}
+.persistent-workspace #app>#handle{display:none}
+.persistent-workspace #app #menu{top:0}
+.persistent-workspace #app .editor{padding-top:18px}
+.persistent-workspace #workspaceHome{padding-top:8px}
+.persistent-workspace #workspaceSettings{padding-top:4px}
+.persistent-workspace .error{direction:ltr}
+.persistent-workspace #workspaceError{bottom:48px}

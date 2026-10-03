@@ -47,7 +47,7 @@ window.JotMenus=(()=>{
       {id:'paste',label:'Paste',icon:'clipboard',shortcut:'Ctrl+V',disabled:!writable,pending:'Pasting…'},
       {separator:true},{id:'select-all',label:'Select all',icon:'text-select',shortcut:'Ctrl+A',disabled:!value.length}
     ],error(error){
-      const alert=document.getElementById('homeError')||document.getElementById('error');if(alert){alert.textContent=error.message;alert.hidden=false;}
+      JotToast.error(JotI18n.text(error.message),{id:'fields-error'});
     },async run(action,isOpen){
       if(!valid(isOpen))return;
       if(action==='copy'||action==='cut'){

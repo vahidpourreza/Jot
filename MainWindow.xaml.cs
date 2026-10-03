@@ -28,9 +28,10 @@ public partial class MainWindow : Window
     internal bool ContentReady { get; private set; }
     internal long ContentReadyMs { get; private set; }
     private string pageUri = "";
+    private ulong activeNavigationId;
     private TaskCompletionSource? flushCompletion;
     private string? flushId;
-    private readonly TaskCompletionSource<bool> editorReadyCompletion=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource<bool> editorReadyCompletion=new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? hideTask;
     private bool forceNativeHide;
     internal bool HideRequested { get; private set; }
@@ -45,10 +46,12 @@ public partial class MainWindow : Window
     internal int TestClipboardDelayMs;
     internal System.Windows.DataObject? TestClipboardData;
     internal string Mode { get; }
-    internal string? NoteId { get; }
+    internal string? NoteId { get; private set; }
     internal string? ImageSource { get; set; }
     internal bool IsSettingsView { get; private set; }
     private bool startupWarning;
+    private string? startupMessage;
+    internal void ShowWarning(string message){startupMessage=message;Post(new{@event="warning",message});}
     internal void ShowStartupWarning()
     {
         startupWarning=true;
@@ -69,6 +72,7 @@ public partial class MainWindow : Window
     private void OnWindowActivated(object? sender, EventArgs e)
     {
         if (closingPermanently) return;
+        session.RememberNoteWindow(this);
         NotifyInputLanguage(); Post(new { @event = "active-window", active = true });
     }
     private void OnWindowDeactivated(object? sender, EventArgs e) => Post(new { @event = "active-window", active = false });
@@ -76,6 +80,7 @@ public partial class MainWindow : Window
     internal MainWindow(JotSession session, string mode = "home", string? noteId = null, bool runTests = false)
     {
         this.session = session; Mode = mode; NoteId = noteId; this.runTests = runTests;
+        if(mode=="note"&&noteId is not null)NoteTabIds.Add(noteId);
         testing = session.Testing; testOutput = session.Output; store = session.Store;
         InitializeComponent();
         ContentReady = mode != "note";
@@ -98,6 +103,7 @@ public partial class MainWindow : Window
         Activated += OnWindowActivated;
         Deactivated += OnWindowDeactivated;
         IsVisibleChanged += OnWindowVisibilityChanged;
+        StateChanged += OnBrowserHostStateChanged;
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged += OnInputLanguageChanged;
         if(!testing&&Mode=="home")Microsoft.Win32.SystemEvents.UserPreferenceChanged+=OnSystemPreferenceChanged;
     }
@@ -107,11 +113,12 @@ public partial class MainWindow : Window
         if (closingPermanently) return;
         HideRequested=false;
         Show();
-        if (!testing) { WindowState = WindowState.Normal; ApplyPendingNoteLayout(); if (ContentReady) Activate(); }
+        if (!testing) { RestoreVisibleWindowState(); ApplyPendingNoteLayout(); if (ContentReady) Activate(); }
         Post(new { @event = "focus" });
     }
     private void OnWindowVisibilityChanged(object sender,DependencyPropertyChangedEventArgs e)
     {
+        UpdateBrowserHostVisibility();
         if(Mode=="home")Post(new{@event="window-visibility",visible=IsVisible});
     }
     internal void StartInTray()
@@ -121,7 +128,7 @@ public partial class MainWindow : Window
     }
     private void RevealReadyContent()
     {
-        if (closingPermanently || ContentReady) return;
+        if (closingPermanently || ContentReady || TransferPending) return;
         ContentReady = true; ContentReadyMs = startup.ElapsedMilliseconds;
         if (!testing) { Opacity = 1; ShowActivated = true; if (IsVisible) Activate(); }
     }
@@ -131,6 +138,7 @@ public partial class MainWindow : Window
         var handle=new WindowInteropHelper(this).EnsureHandle();
         source=HwndSource.FromHwnd(handle);
         source?.AddHook(WndProc);nativeReady=true;
+        InitializeWindowPresentation();
         if(!testing&&Mode=="home")
         {
             CreateTray();
@@ -141,20 +149,25 @@ public partial class MainWindow : Window
         if(closingPermanently||Dispatcher.HasShutdownStarted)return;
         _=Dispatcher.BeginInvoke(()=> {
             foreach(var window in session.Windows.ToArray())window.UpdateNativeIcon();
+            (System.Windows.Application.Current as App)?.RefreshTaskbarMenu();
         });
     }
     internal void ShowHomeView(bool settings)
     {
-        if (closingPermanently || Mode != "home" || IsSettingsView == settings) return;
-        IsSettingsView = settings;
-        if (webView is not null)
-            _ = Dispatcher.BeginInvoke(() => {
-                if (closingPermanently || webView is null) return;
-                var next = new Uri(Path.Combine(AppContext.BaseDirectory, IsSettingsView ? "settings.html" : "home.html")).AbsoluteUri;
-                if (next == pageUri) return;
-                pageUri = next;
-                webView.Navigate(pageUri);
-            });
+        if(closingPermanently||Mode!="home")return;
+        // A cold Settings launch must supply its destination to the first
+        // renderer context instead of briefly presenting Home first.
+        if(!initialized){IsSettingsView=settings;if(settings)SettingsTabOpen=true;}
+        _=ShowHomeViewSafely(settings);
+    }
+    private async Task ShowHomeViewSafely(bool settings)
+    {
+        try{await SwitchHomeView(settings);}
+        catch(Exception error)
+        {
+            session.Log.Error("home-navigation",error,Mode);
+            ShowWarning("Could not save this note before changing pages. Your draft is still open; please try again.");
+        }
     }
     internal bool Post(object message)
     {
@@ -182,11 +195,14 @@ public partial class MainWindow : Window
         try
         {
             PrepareNativeHost();RoundWindow();
+            ApplyWorkspacePin(await store.LoadPreferences());
             var environment = await session.EnvironmentAsync().WaitAsync(windowLifetime.Token);
             if (closingPermanently) return;
             await Browser.EnsureCoreWebView2Async(environment).WaitAsync(windowLifetime.Token);
             if (closingPermanently) return;
             var core = Browser.CoreWebView2;
+            session.ProtectWebViewInput(core);
+            UpdateBrowserHostVisibility();
             webView = core;
             core.Settings.AreDevToolsEnabled = testing;
             core.Settings.AreDefaultContextMenusEnabled = false;
@@ -196,8 +212,12 @@ public partial class MainWindow : Window
             core.NewWindowRequested += (_, args) => args.Handled = true;
             core.PermissionRequested += (_, args) => args.State = Microsoft.Web.WebView2.Core.CoreWebView2PermissionState.Deny;
             core.WebMessageReceived += OnWebMessage;
-            core.NavigationStarting += (_, args) => { if (args.Uri != pageUri) args.Cancel = true; };
-            core.ProcessFailed += (_, args) => session.Log.Event("webview-process-failed", args.ProcessFailedKind.ToString());
+            core.NavigationStarting += (_, args) => {
+                if (args.Uri != pageUri) { args.Cancel = true; return; }
+                BeginWorkspaceNavigation();
+                activeNavigationId=args.NavigationId;
+            };
+            core.ProcessFailed += (_, args) => { FailWorkspace("The Home workspace stopped responding.");session.Log.Event("webview-process-failed", args.ProcessFailedKind.ToString()); };
             if (testing)
             {
                 await core.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}").WaitAsync(windowLifetime.Token);
@@ -206,18 +226,19 @@ public partial class MainWindow : Window
             }
             core.NavigationCompleted += async (_, args) =>
             {
-                if (closingPermanently) return;
-                if (!args.IsSuccess) { session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); RevealReadyContent(); return; }
+                if (closingPermanently || args.NavigationId!=activeNavigationId) return;
+                if (!args.IsSuccess) { FailWorkspace("The Home workspace could not open.");session.Log.Event("navigation-failed", args.WebErrorStatus.ToString()); editorReadyCompletion.TrySetResult(false);RevealReadyContent(); return; }
                 if (runTests) await RunSelfTests();
                 else if(testing&&session.PackageSmoke&&Mode=="home")await RunPackageSmoke();
             };
-            var page = Mode == "home" ? (IsSettingsView ? "settings.html" : "home.html") : Mode == "image" ? "image.html" : "index.html";
+            var page = Mode == "home" ? "workspace.html" : Mode == "image" ? "image.html" : "index.html";
             pageUri = new Uri(Path.Combine(AppContext.BaseDirectory, page)).AbsoluteUri;
             core.Navigate(pageUri);
         }
         catch (Exception ex)
         {
             if (closingPermanently) return;
+            FailWorkspace("The Home workspace could not open.");
             editorReadyCompletion.TrySetResult(false);
             LogFailure(ex);
             RevealReadyContent();
@@ -245,7 +266,13 @@ public partial class MainWindow : Window
     }
     internal async Task Flush(bool holdEditing=false)
     {
-        if (closingPermanently || Mode != "note") return;
+        if(!tabOperation.IsCompleted)try{await tabOperation;}catch{ /* The tab operation already reports its own failure. */ }
+        await FlushEditor(holdEditing);
+    }
+    private async Task FlushEditor(bool holdEditing=false)
+    {
+        if (closingPermanently || !HasNoteEditor) return;
+        if(Mode=="home")await WaitForWorkspace();
         if(!await editorReadyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16)))return;
         if(holdEditing)Post(new{@event="prepare-quit"});
         if (flushCompletion is not null) { await flushCompletion.Task.WaitAsync(TimeSpan.FromSeconds(16)); return; }
@@ -259,15 +286,23 @@ public partial class MainWindow : Window
     }
     internal Task HideAfterSaving(bool forceHide=false)
     {
+        if(session.UpdatingLibrary)return HideAfterLibraryUpdate(forceHide);
+        if(session.ChangingOpeningMode)return HideAfterModeChange(forceHide);
         HideRequested=true;
         forceNativeHide|=forceHide;
         return hideTask is {IsCompleted:false}?hideTask:hideTask=HideAfterSavingCore();
     }
+    private async Task HideAfterModeChange(bool forceHide)
+    {await session.WaitForOpeningModeChange();if(!closingPermanently)await HideAfterSaving(forceHide);}
+    private async Task HideAfterLibraryUpdate(bool forceHide)
+    {await session.WaitForLibraryOperations();if(!closingPermanently)await HideAfterSaving(forceHide);}
     private async Task HideAfterSavingCore()
     {
         try
         {
             await Flush(true);
+            await session.SaveAutoFilesFor(Mode=="home"?NoteTabIds:NoteId is {} id?new[]{id}:Array.Empty<string>());
+            if(Mode=="home"&&HideRequested)await session.SaveClosingWorkspace(this);
             if(!closingPermanently&&HideRequested&&(forceNativeHide||!testing||session.ExerciseLifecycle||session.ExitProbe))
             {
                 Hide();
@@ -285,13 +320,6 @@ public partial class MainWindow : Window
         try{await HideAfterSaving(true);}
         catch(Exception error){session.Log.Error("close-image",error);Post(new{@event="warning",message="Could not finish saving. Jot is still open; try closing again."});}
     }
-    private async void CloseDeletedNote()
-    {
-        // Deleted editors must be disposed before Quit flushes other notes.
-        ClosePermanently();
-        try{await session.QuitIfNoOpenWindows();}
-        catch(Exception error){session.Log.Error("close-deleted-note",error);session.Home().Post(new{@event="warning",message="The note was deleted, but Jot could not finish saving its session. Please try Quit again."});}
-    }
 
     private async void OnWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -299,68 +327,115 @@ public partial class MainWindow : Window
         int id = 0;
         string action = "parse-message";
         string messageSource = "";
+        string? documentId=null;
         try
         {
             messageSource = e.Source;
             if (messageSource != pageUri) return;
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
             var message = doc.RootElement;
+            if(message.TryGetProperty("documentId",out var document)&&document.ValueKind==JsonValueKind.String)documentId=document.GetString();
             if (message.TryGetProperty("id", out var ident)) id = ident.GetInt32();
             action = message.GetProperty("action").GetString() ?? "";
             var payload = message.TryGetProperty("payload", out var value) ? value : default;
             object? result = null;
             switch (action)
             {
-                case "context": result = new { mode = Mode, noteId = NoteId, image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive, visible = IsVisible, startupWarning }; break;
+                case "context": result = new { mode = Mode, view=WorkspaceView,noteId = NoteId, activeId=ActiveWorkspaceTab,settingsOpen=SettingsTabOpen,canReopenTab=CanReopenClosedTab, workspace=Mode=="home",tabbed=Tabbed,tabs=await TabHeaders(),image = ImageSource, appearance = IsSettingsView, inputDirection = InputDirection(), active = IsActive, visible = IsVisible, fullscreen=IsWindowFullscreen, startupWarning,warning=startupMessage };startupMessage=null;break;
+                case "workspace-layout":
+                    RequireHome();
+                    workspaceDocumentId=documentId;
+                    result=new{home=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"home.html")),editor=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"index.html")),settings=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"settings.html"))};
+                    break;
                 case "input-language": result = InputDirection(); break;
                 case "log-error": session.Log.Renderer(payload); result = true; break;
                 case "load": result = await store.Load(); break;
                 case "index-load": result = await store.LoadIndex(); break;
+                case "open-note-file": result=await ChooseNoteFile();break;
+                case "save-note-file": result=await SaveNoteFile(payload.GetProperty("id").GetString()!,payload.TryGetProperty("saveAs",out var fileSaveAs)&&fileSaveAs.GetBoolean());break;
+                case "note-file-state":
+                    var fileState=await store.LoadFileState(payload.GetString()!);result=fileState;
+                    if(fileState is {} caption&&caption.GetProperty("id").GetString()==NoteId)SetNoteFileCaption(caption);break;
+                case "folder-create":
+                    RequireHome();await store.CreateFolder(payload.GetString()!);await session.Changed(false);result=true;break;
+                case "folder-rename":
+                    RequireHome();await store.RenameFolder(payload.GetProperty("name").GetString()!,payload.GetProperty("replacement").GetString()!);await session.Changed(false);result=true;break;
+                case "folder-remove":
+                    RequireHome();await store.RemoveFolder(payload.GetString()!);await session.Changed(false);result=true;break;
+                case "library-copy": result=await CopyLibraryNote(payload.GetString()!);break;
+                case "library-export": await ExportLibraryNote(payload.GetString()!);result=true;break;
+                case "library-delete": RequireHome();await session.DeleteLibraryNote(payload.GetString()!);result=true;break;
+                case "library-pin":
+                    RequireHome();result=await session.UpdateLibraryNotes([payload.GetProperty("id").GetString()!],"pin",pinned:payload.GetProperty("pinned").GetBoolean());break;
+                case "library-bulk":
+                    RequireHome();result=await session.UpdateLibraryNotes(payload.GetProperty("ids").EnumerateArray().Select(value=>value.GetString()!),payload.GetProperty("action").GetString()!,
+                        payload.TryGetProperty("pinned",out var libraryPinned)?libraryPinned.GetBoolean():null,payload.TryGetProperty("folder",out var libraryFolder)?libraryFolder.GetString():null);break;
+                case "window-fullscreen": RequireHome();result=await SetWindowFullscreen(payload.GetBoolean());break;
                 case "note-load":
-                    if (Mode != "note") throw new InvalidOperationException("Only a note window can load its editor.");
+                    if (!HasNoteEditor) throw new InvalidOperationException("Only an active note can load its editor.");
                     var ownNote = await store.LoadNote(NoteId!) ?? throw new InvalidDataException("Note not found.");
-                    result = new { context = new { noteId = NoteId, inputDirection = InputDirection(), active = !testing, fullscreen = IsNoteFullscreen },
+                    result = new { context = new { noteId = NoteId,activeId=NoteId,workspace=Mode=="home",view=WorkspaceView,inputDirection = InputDirection(), active = !testing, fullscreen = IsWindowFullscreen, tabbed=Tabbed, tabs=await TabHeaders() },
                         model = new { version = 2, activeId = NoteId, notes = new[] { ownNote }, prefs = await store.LoadPreferences() } };
                     break;
                 case "editor-ready": editorReadyCompletion.TrySetResult(true);RevealReadyContent(); break;
                 case "editor-failed": editorReadyCompletion.TrySetResult(false);RevealReadyContent(); break;
+                case "workspace-ready": WorkspaceReady(documentId); break;
+                case "workspace-view-ready": if(IsWorkspaceDocument(documentId))WorkspaceViewReady(payload); break;
+                case "workspace-view-failed":
+                    if(IsWorkspaceDocument(documentId)&&payload.ValueKind==JsonValueKind.Object&&payload.TryGetProperty("intent",out var failedViewIntent)&&failedViewIntent.GetString()==workspaceViewIntent)
+                        workspaceViewReady?.TrySetException(new IOException("The requested workspace view could not open."));
+                    break;
+                case "workspace-failed": if(IsWorkspaceDocument(documentId)){FailWorkspace("The Home workspace could not open.");RevealReadyContent();}break;
                 case "preferences-load": result = await store.LoadPreferences(); break;
+                case "shortcuts-status": result=session.ShortcutStatus;break;
+                case "shortcuts-config": result=ShortcutBindings.Config(await store.LoadPreferences());break;
+                case "shortcuts-layout": result=await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory,"shortcuts.html"));break;
+                case "shortcuts": await session.OpenShortcuts();result=true;break;
+                case "app-shortcut": await HandleAppShortcut(payload.GetString()!);result=true;break;
+                case "workspace-pin": result=await SetWorkspacePinned(payload.GetBoolean());break;
                 case "import": await store.Import(payload); break;
-                case "new-note": result = (await session.NewNote()).NoteId; break;
+                case "new-note": result = (await session.NewNote(payload.ValueKind==JsonValueKind.Object&&payload.TryGetProperty("folder",out var newFolder)?newFolder.GetString():null)).NoteId; break;
+                case "open-note-tab": RequireHome();result=(await session.OpenAsTab(payload.GetString()!)).NoteId;break;
+                case "new-tab": RequireHome();result=(await session.NewTab(this,payload.ValueKind==JsonValueKind.Object&&payload.TryGetProperty("folder",out var tabFolder)?tabFolder.GetString():null)).NoteId;break;
+                case "tab-switch":
+                    await session.WaitForLibraryOperations();
+                    await session.WaitForOpeningModeChange();
+                    var requestedTab=payload.GetString()!;
+                    if(requestedTab!="home"&&!(requestedTab=="settings"&&SettingsTabOpen)&&!NoteTabIds.Contains(requestedTab))throw new InvalidOperationException("This tab is no longer open.");
+                    await SwitchNoteTab(requestedTab);result=true;break;
+                case "tab-close": await session.WaitForLibraryOperations();await session.WaitForOpeningModeChange();await CloseNoteTab(payload.GetString()!);result=true;break;
+                case "tab-reopen": RequireHome();await session.ReopenClosedTab(this);result=true;break;
+                case "tab-pin": RequireHome();await SetTabPinned(payload.GetProperty("id").GetString()!,payload.GetProperty("pinned").GetBoolean());result=true;break;
+                case "tab-reorder": RequireHome();await ReorderNoteTabs(payload.GetProperty("ids").EnumerateArray().Select(value=>value.GetString()!).ToArray());result=true;break;
+                case "tab-ready": break; // Accepted for standalone editor compatibility; workspace-view-ready owns tab readiness.
                 case "open-note":
                     var noteId = payload.GetString()!;
                     if (!Guid.TryParse(noteId, out _)) throw new InvalidDataException("یادداشت معتبر نیست.");
                     if (!await store.Contains(noteId))
                         throw new InvalidDataException("یادداشت پیدا نشد.");
-                    session.OpenNote(noteId); break;
+                    await session.OpenNoteWindow(noteId); break;
+                case "open-note-default": RequireHome();result=(await session.OpenNoteDefault(payload.GetString()!)).NoteId;break;
                 case "home": session.Home(payload.ValueKind == JsonValueKind.True); break;
                 case "settings": session.Settings(); break;
-                case "note-metadata": await store.SaveMetadata(payload); await session.Changed(false, payload.GetProperty("id").GetString()); result = true; break;
+                case "note-metadata": await store.SaveMetadata(payload); await session.Changed(false, payload.GetProperty("id").GetString());await session.FileNoteChanged(payload.GetProperty("id").GetString()!); result = true; break;
                 case "note-delete":
-                    if (Mode != "note" || payload.GetString() != NoteId) throw new InvalidDataException("Delete a note from its own window.");
-                    await Flush();
-                    await store.Delete(NoteId!);
-                    // Once committed, a notification failure must not masquerade as a failed deletion.
-                    try { await session.Changed(preferences: false); }
-                    catch (Exception ex) { session.Log.Error("delete-notification", ex, Mode); }
-                    result = true;
-                    // Reply before disposal, then check whether the final app window closed.
-                    _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, CloseDeletedNote);
+                    if (!HasNoteEditor || payload.GetString() != NoteId) throw new InvalidDataException("Delete a note from its own editor.");
+                    await DeleteNoteTab(NoteId!);result=true;
                     break;
                 case "save":
-                    if (Mode != "note" || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("این پنجره فقط یادداشت خودش را ذخیره می‌کند.");
+                    if (!HasNoteEditor || payload.GetProperty("id").GetString() != NoteId) throw new InvalidDataException("This window can save only its active note.");
                     if(testing&&TestSaveDelayMs>0)await Task.Delay(TestSaveDelayMs);
-                    await store.SaveNote(payload); await session.Changed(preferences: false); result = true; break;
+                    await store.SaveNote(payload);await session.NoteContentChanged(NoteId!);result=true;break;
                 case "preferences":
                     if(Mode!="home")throw new InvalidOperationException("Change app defaults from Settings, not a note window.");
-                    result = (await store.SavePreferences(payload)).GetProperty("prefs"); await session.Changed(); break;
+                    result = await session.ApplyPreferences(payload); break;
                 case "app-theme":
-                    if(Mode!="note")throw new InvalidOperationException("Use Settings to change the app theme.");
+                    if(!HasNoteEditor)throw new InvalidOperationException("Use Settings to change the app theme.");
                     result=(await store.SavePreferences(JsonSerializer.SerializeToElement(new{theme=payload.GetString()}))).GetProperty("prefs");
                     await session.Changed();break;
                 case "note-preferences":
-                    if(Mode!="note"||payload.GetProperty("id").GetString()!=NoteId)throw new InvalidDataException("Change a note's settings from its own window.");
-                    result=await store.SaveNotePreferences(NoteId!,payload.GetProperty("settings"));break;
+                    if(!HasNoteEditor||payload.GetProperty("id").GetString()!=NoteId)throw new InvalidDataException("Change a note's settings from its own editor.");
+                    result=await store.SaveNotePreferences(NoteId!,payload.GetProperty("settings"));await session.FileNoteChanged(NoteId!);break;
                 case "theme":
                     bool light = payload.GetProperty("mode").GetString() == "light";
                     if(Mode=="home")session.UpdateTrayTheme(light?"light":"dark");
@@ -369,14 +444,19 @@ public partial class MainWindow : Window
                     UpdateNativeIcon();
                     break;
                 case "pin":
+                    if(Mode!="note"){result=false;break;}
                     if (!testing) Topmost = payload.GetBoolean();
                     result = payload.GetBoolean(); break;
                 case "drag":
                     await DragHeader(payload);
                     break;
+                case "window-toggle-maximize":
+                    if(Mode is not ("home" or "note"))throw new InvalidOperationException("Only notes and Home can be maximized.");
+                    result=await SetWindowFullscreen(!IsWindowFullscreen);break;
                 case "image-fullscreen": result=await SetImageFullscreen(payload.GetBoolean());break;
                 case "note-fullscreen":
-                    result=await SetNoteFullscreen(payload.ValueKind==JsonValueKind.Object?payload.GetProperty("enabled").GetBoolean():payload.GetBoolean());break;
+                    if(!HasNoteEditor)throw new InvalidOperationException("Only an active note can use note fullscreen.");
+                    result=await SetWindowFullscreen(payload.ValueKind==JsonValueKind.Object?payload.GetProperty("enabled").GetBoolean():payload.GetBoolean());break;
                 case "hide":
                     if (Mode == "image") _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, CloseImageFromUi);
                     else await HideAfterSaving();
@@ -401,7 +481,7 @@ public partial class MainWindow : Window
                     if(testing){TestClipboardData=clipboard;if(TestClipboardDelayMs>0)await Task.Delay(TestClipboardDelayMs);}
                     result = testing?TestClipboardWriteAccepted:await RichClipboard.WriteAsync(clipboard, session.Log);break;
                 case "clipboard-read":
-                    if(Mode!="note")throw new InvalidOperationException("Paste is available only in a note editor.");
+                    if(!HasNoteEditor)throw new InvalidOperationException("Paste is available only in a note editor.");
                     result=testing?TestClipboardContent:await ClipboardReader.ReadAsync(session.Log);break;
                 case "clipboard-read-text": result=testing?TestClipboardContent.text:await ClipboardReader.ReadTextAsync(session.Log);break;
                 case "clipboard-text":
@@ -427,7 +507,7 @@ public partial class MainWindow : Window
                 default: throw new InvalidOperationException("Unsupported action.");
             }
             if (testing) TestHostActions.Add(action);
-            if (id > 0 && !closingPermanently && messageSource == pageUri) Post(new { id, ok = true, value = result });
+            if (id > 0 && !closingPermanently && messageSource == pageUri) Post(new { id, documentId,ok = true, value = result });
         }
         catch (Exception ex)
         {
@@ -441,7 +521,7 @@ public partial class MainWindow : Window
                 _=>"The database operation failed. Your draft is still in this window; see the local error log."
             };
             if (id > 0 && !closingPermanently && messageSource == pageUri)
-                Post(new { id, ok = false, error = message, operation = action, code = busy ? "clipboard-busy" : "operation-failed", logged = true });
+                Post(new { id, documentId,ok = false, error = message, operation = action, code = busy ? "clipboard-busy" : "operation-failed", logged = true });
         }
     }
 
@@ -449,6 +529,7 @@ public partial class MainWindow : Window
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        if(HandleWindowPresentationMessage(hwnd,msg,wParam,lParam,ref handled))return 0;
         if (closingPermanently) return 0;
         // Shell/taskbar Close (including Close all windows) is an app shutdown,
         // not a sequence of note-header X actions. Intercept before WPF hides any
@@ -481,10 +562,14 @@ public partial class MainWindow : Window
         }
         // Close the message boundary before disposal or any late activation callbacks.
         closingPermanently = true;
+        StopWindowPresentation();
         windowLifetime.Cancel();
+        workspaceReadyCompletion.TrySetResult(false);
+        workspaceViewReady?.TrySetCanceled();
         session.Windows.Remove(this);
         Activated -= OnWindowActivated; Deactivated -= OnWindowDeactivated;
         IsVisibleChanged -= OnWindowVisibilityChanged;
+        StateChanged -= OnBrowserHostStateChanged;
         Loaded -= OnLoaded; SizeChanged -= OnSizeChanged;
         if (source is not null) source.RemoveHook(WndProc);
         System.Windows.Input.InputLanguageManager.Current.InputLanguageChanged -= OnInputLanguageChanged;
@@ -494,6 +579,7 @@ public partial class MainWindow : Window
         editorReadyCompletion.TrySetResult(false);
         // Release the composition controller while its native parent still exists.
         if (!browserDisposed) { Browser.Dispose(); browserDisposed = true; }
+        if(session.Windows.Count==0)session.DisposeWebViewInputProtection();
     }
     protected override void OnClosed(EventArgs e)
     {

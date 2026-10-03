@@ -1,0 +1,32 @@
+/* Pins stay beside Home while regular tabs scroll independently. */
+.workspace-pinned-tabs{display:flex;align-items:stretch;gap:4px;flex:0 1 auto;min-width:104px;max-width:min(42%,468px);height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:auto}
+.workspace-pinned-tabs[hidden]{display:none}
+.workspace-tabs[data-has-pins=true] .workspace-note-tabs{flex:1 1 112px;min-width:72px}
+.workspace-pinned-tabs>.workspace-tab{width:156px;min-width:104px;max-width:156px;flex:0 1 156px}
+.workspace-tab[data-pinned=true]>[role=tab]{width:100%}
+.workspace-tab[data-pinned=true] .tab-title{flex:1}
+.workspace-tab[data-pinned=true] .tab-close{display:none}
+.workspace-tab svg.tab-pin-marker{display:block;flex:none;width:12px;height:12px;opacity:.65;stroke-width:1.6}
+.workspace-tab .tab-pin-marker[hidden]{display:none}
+.workspace-tab[data-kind=note]>[role=tab]{touch-action:none;user-select:none}
+.workspace-tabs[data-dragging=true],.workspace-tabs[data-dragging=true] [role=tab]{cursor:grabbing}
+.workspace-tabs[data-dragging=true] .workspace-tab[data-kind=note]{transition:transform 150ms cubic-bezier(.2,.8,.2,1),background-color 90ms ease,color 90ms ease,border-color 90ms ease}
+.workspace-tabs[data-dragging=true] .workspace-tab[data-dragging=true]{z-index:2;opacity:1;box-shadow:0 2px 8px #0003;transition:none}
+.workspace-tabs-menu .tab-marker{width:16px;height:17px;margin:0;flex:none;border-radius:0;background:transparent;color:var(--tab-accent)}
+.workspace-tabs-menu [data-pinned=true] .tab-title::after{content:' · Pinned';font-size:11px;color:var(--muted-foreground)}
+/* In compact windows, the picker and wheel/keyboard navigation replace the
+   two scroll arrows only when pins need that space. Keep readable tab text. */
+@media(max-width:600px){
+  .workspace-tabs[data-has-pins=true] :is(.workspace-tab-previous,.workspace-tab-next){display:none}
+  .workspace-tabs[data-has-pins=true] .workspace-add-tab{margin-inline:0}
+  .workspace-pinned-tabs{max-width:42%}
+  .workspace-pinned-tabs>.workspace-tab{width:112px;min-width:104px;max-width:112px;flex-basis:112px}
+}
+@media(max-width:450px){
+  .workspace-pinned-tabs{gap:2px;min-width:80px;max-width:calc(100% - 160px)}
+  .workspace-pinned-tabs>.workspace-tab{width:100%;min-width:80px;max-width:112px;flex:0 0 100%}
+  .workspace-tab[data-pinned=true]>[role=tab]{gap:4px;padding-inline:6px}
+  .workspace-tab[data-pinned=true] .tab-marker{width:12px;height:14px}
+  .workspace-tab[data-pinned=true] .tab-file-status{width:5px;height:5px}
+}
+@media(prefers-reduced-motion:reduce){.workspace-tabs[data-dragging=true] .workspace-tab[data-kind=note]{transition:none}}

@@ -54,6 +54,8 @@ window.JotEditorMenu=(()=>{
     if(context.image){add('open-image','Open image','scan');add('copy-image','Copy image','copy');add('remove-image','Remove image','trash-2');separator();}
     add('undo','Undo','undo-2','Ctrl+Z',!h||h.index===0);add('redo','Redo','redo-2','Ctrl+Y',!h||h.index>=h.values.length-1);separator();
     add('cut','Cut','scissors','Ctrl+X',!selected);add('copy','Copy','copy','Ctrl+C',!selected);add('paste','Paste','clipboard','Ctrl+V');separator();directions();separator();add('select-all','Select all','text-select','Ctrl+A');
+    const files=window.JotNoteFiles?.editorMenuItems()||[];
+    if(files.length){separator();for(const item of files)add(item.id,item.label,item.icon,item.shortcut,item.disabled);}
     separator();add('home','Home','home');
     menu.hidden=false;menu.style.left='0px';menu.style.top='0px';menu.style.maxHeight=Math.max(0,innerHeight-12)+'px';
     const r=menu.getBoundingClientRect();menu.style.left=Math.max(6,Math.min(x,innerWidth-r.width-6))+'px';menu.style.top=Math.max(6,Math.min(y,innerHeight-r.height-6))+'px';menu.scrollTop=0;
@@ -69,13 +71,14 @@ window.JotEditorMenu=(()=>{
     button.classList.add('pending');button.querySelector('span').textContent=action==='home'?'Opening…':action==='paste'?'Pasting…':['copy','copy-image','cut'].includes(action)?'Copying…':'Working…';
     try{
       if(action==='home'){await saveNow();if(!c.cancelled)await request('home');close();return;}
+      if(action.startsWith('file-')){await JotNoteFiles.run(action,c.noteId);close();return;}
       if(!valid(c))throw new Error('The note changed. Select the content and try again.');restore(c);
-      if(action==='copy'||action==='cut'||action==='copy-image'){
+      if(action==='cut')await cutSelection(()=>valid(c));
+      else if(action==='copy'||action==='copy-image'){
         const payload=action==='copy-image'?{html:c.image.outerHTML,text:'',image:c.image.src}:copyPayload();
         const copied=await request('clipboard-write',payload);
         if(c.cancelled)return;
         if(copied!==true)throw new Error('Copy was interrupted. Your note is unchanged.');
-        if(action==='cut'){if(!valid(c))throw new Error('Copied, but the note changed. Nothing was cut.');restore(c);command('delete');}
       }else if(action==='paste'){
         const data=await request('clipboard-read');if(c.cancelled)return;if(!valid(c))throw new Error('The note changed. Paste again at the intended position.');restore(c);
         const transfer=new DataTransfer();transfer.setData('text/plain',data.text||'');transfer.setData('text/html',data.html||'');

@@ -89,7 +89,7 @@ public partial class MainWindow
         await fresh.SaveMetadata(JsonSerializer.SerializeToElement(new{id=ids[0],group="*"}));Check("literal-star-group-retained",(await fresh.LoadNote(ids[0]))!.Value.GetProperty("group").GetString()=="*");
         await fresh.Delete(ids[0]);rejected=false;try{await fresh.SaveNote(JsonSerializer.SerializeToElement(new{id=ids[0],html="stale",plain="stale",updatedAt=0}));}catch(InvalidDataException){rejected=true;}
         Check("deleted-note-cannot-be-resurrected",rejected&&!await fresh.Contains(ids[0])&&await fresh.LoadNote(ids[0]) is null);
-        Check("unused-group-cleaned-up",Convert.ToInt64(await StoreScalar(fresh,"SELECT count(*) FROM groups WHERE name='*';"))==0);
+        Check("empty-folder-is-kept",Convert.ToInt64(await StoreScalar(fresh,"SELECT count(*) FROM groups WHERE name='*';"))==1);
         var contentBeforeLock=(await fresh.LoadNote(ids[1]))!.Value.GetRawText();
         using(var lockConnection=fresh.Connect(fresh.FilePath))
         using(var writeLock=lockConnection.BeginTransaction())

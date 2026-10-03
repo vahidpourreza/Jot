@@ -99,8 +99,8 @@ public partial class MainWindow
                 renderCards();check('unchanged-index-rows-reuse-dom',cardViews.get('a').card===first&&cardViews.get('b').card===second);
                 homeData.notes=homeData.notes.map(note=>({...note,...(note.id==='a'?{title:'Updated',group:'New group',updatedAt:3}:{})}));renderCards();
                 check('updated-index-row-keeps-node-and-reorders',cardViews.get('a').card===first&&$('cards').firstElementChild===first&&first.querySelector('strong').textContent==='Updated');
-                first.querySelector('.card-edit').click();check('cached-row-actions-use-current-metadata',$('noteTitleInput').value==='Updated'&&homeData.notes.find(n=>n.id==='a').group==='New group');$('metadataDialog').close();
-                check('groups-are-preserved-without-filtering-the-index',$('cards').children.length===2&&!$('groupFilters')&&!$('homeSearch')&&!$('noteGroupInput'));
+                editNote(cardViews.get('a').note);check('cached-row-actions-use-current-metadata',$('noteTitleInput').value==='Updated'&&homeData.notes.find(n=>n.id==='a').group==='New group');$('metadataDialog').close();
+                check('all-notes-keeps-every-folder-visible',$('cards').children.length===2&&!!$('folderButton')&&!!$('homeSearch'));
                 homeData.notes=homeData.notes.filter(note=>note.id!=='a');renderCards();check('deleted-index-rows-release-cache',!cardViews.has('a')&&!first.isConnected);
                 homeData.notes[0].title='Currency enum حذف شد.';homeData.notes[0].group='Work یادداشت تیم';renderCards();
                 check('index-previews-use-smart-mixed-language-direction',cardViews.get('b').title.dir==='rtl'&&cardViews.get('b').title.querySelector('bdi')?.textContent==='Currency enum');

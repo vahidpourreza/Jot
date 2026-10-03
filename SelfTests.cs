@@ -40,6 +40,7 @@ public partial class MainWindow
     {
         await WaitFor("typeof visibilityAnimations==='undefined'||visibilityAnimations.size===0");
         await WaitFor("document.getAnimations().every(animation=>animation.playState!=='running'||!Number.isFinite(animation.effect.getTiming().iterations))");
+        await Script("document.querySelector("+JsonSerializer.Serialize(selector)+").scrollIntoView({block:'nearest',inline:'nearest'})");
         using var point=JsonDocument.Parse(await Script("(()=>{const r=document.querySelector("+JsonSerializer.Serialize(selector)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
         var x=point.RootElement.GetProperty("x").GetDouble();var y=point.RootElement.GetProperty("y").GetDouble();
         var closed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -73,12 +74,12 @@ public partial class MainWindow
     private async Task GoToSettings()
     {
         await ClickControl("#settingsButton");
-        await WaitFor("window.jotReady===true&&document.getElementById('settingsHandle')!==null");
+        await WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='settings'");
     }
     private async Task GoToIndex()
     {
         await ClickControl("#settingsBack");
-        await WaitFor("window.jotReady===true&&document.getElementById('cards')!==null");
+        await WaitFor("window.jotReady===true&&window.JotWorkspace?.view==='home'");
     }
     private async Task VerifyFontLimitCursor(List<object> checks,MainWindow note)
     {
@@ -121,9 +122,13 @@ public partial class MainWindow
         try
         {
             await WaitFor("window.jotReady===true");
+            // The broad legacy editor fixture exercises separate windows;
+            // fresh-profile Tabs defaults are checked in the shortcut suite.
+            await store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));await session.Changed();
             checks.Add(new{name="home-ready",passed=true,elapsedMs=startup.ElapsedMilliseconds});
             await VerifySqliteStorage(checks);
             await VerifySessionRestore(checks);
+            await VerifyTaskbarActions(checks);
             await VerifyLifecycleScenarios(checks);
             await VerifyLastWindowClose(checks);
             await VerifySystemCloseProcesses(checks);
@@ -150,6 +155,11 @@ public partial class MainWindow
             await VerifyNotePreferences(checks,a,b);
             await VerifyNoteTools(checks);
             await VerifyNoteFullscreen(checks);
+            await VerifyLibrary(checks);await VerifyTabbedNotes(checks);await VerifyWorkspaceMotion(checks);await VerifyWorkspaceReadiness(checks);await VerifyNewNoteDestination(checks);
+            await VerifyTabOverflow(checks);await VerifyOpeningMode(checks);await VerifyUndoSelection(checks);await VerifyNoteFiles(checks);await VerifyFileCommandRouting(checks);
+            await VerifyLibraryRedesign(checks);await VerifyPasteSpacing(checks);await VerifyInheritedWriting(checks);await VerifyWorkspaceSession(checks);await VerifyFileMenusAndIcon(checks);
+            await VerifyFileWriteRaces(checks);await VerifyLegacyFileState(checks);await VerifyFileStateAutosave(checks);await VerifyFileStatusUi(checks);await VerifyNativeWindowPresentation(checks);await VerifyNotePersonalization(checks);await VerifyShortcutsSettings(checks);
+            await VerifyStandardEditing(checks);await VerifyToastDesign(checks);await VerifyCustomShortcuts(checks);
             await VerifyPerformance(checks,a);
             await MeasureWindowAndImageWork(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});
@@ -173,14 +183,14 @@ public partial class MainWindow
             checks.Add(new{name="concurrent-editors-preserve-both-notes",passed=state.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==a.NoteId&&n.GetProperty("plain").GetString()!.Contains("Note A"))&&state.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==b.NoteId&&n.GetProperty("plain").GetString()!.Contains("Note B"))});
             await WaitFor("homeData.notes.length>=2");
             await store.SaveMetadata(JsonSerializer.SerializeToElement(new{id=a.NoteId,group="Work"}));
-            await ClickControl("[data-note-id='"+a.NoteId+"'] .card-edit");
+            await RightClickControl("[data-note-id='"+a.NoteId+"'] .card-open");await ClickControl("#contentContextMenu [data-action=rename]");
             await Script("document.getElementById('noteTitleInput').value='Sprint ideas';document.getElementById('metadataForm').requestSubmit()");
             await WaitFor("homeData.notes.some(n=>n.title==='Sprint ideas'&&n.group==='Work')");
             await a.Script("editor.innerHTML='<p>Note A — فارسی revised</p>';onEdit();saveNow().then(()=>window.metaSaved=true)");
             await a.WaitFor("window.metaSaved===true");
             var metadataState=(await store.Load())!.Value.GetProperty("notes").EnumerateArray().First(n=>n.GetProperty("id").GetString()==a.NoteId);
             checks.Add(new{name="title-group-survive-editor-save",passed=metadataState.GetProperty("title").GetString()=="Sprint ideas"&&metadataState.GetProperty("group").GetString()=="Work"});
-            checks.Add(new{name="index-has-no-search-or-group-controls",passed=await Script("!document.querySelector('#homeSearch,#groupFilters,#noteGroupInput,.card-group')&&document.querySelectorAll('.note-card').length>=2")=="true"});
+            checks.Add(new{name="index-has-search-folders-and-layout-controls",passed=await Script("!!document.querySelector('#homeSearch')&&!!document.querySelector('#folderButton')&&!!document.querySelector('#gridView')&&!!document.querySelector('#listView')&&document.querySelectorAll('.note-card').length>=2")=="true"});
             var rootHandle=source!.Handle;
             var windowCount=session.Windows.Count;
             await GoToSettings();
@@ -191,7 +201,7 @@ public partial class MainWindow
             await b.ClickControl("#menuButton");
             await b.ClickControl("[data-note-color='rose']");
             await b.WaitFor("activeNote().color==='rose'");await b.Script("closePanels()");
-            checks.Add(new{name="global-settings-only-expose-theme",passed=await settings.Script("!document.querySelector('[data-weight],#toolbarVisible,#homeFontSize,#homeLineHeight,#trayVisibility')&&document.querySelectorAll('[data-theme-choice]').length===2")=="true"});
+            checks.Add(new{name="global-settings-keep-theme-and-new-note-destination",passed=await settings.Script("!document.querySelector('[data-weight],#toolbarVisible,#homeFontSize,#homeLineHeight,#trayVisibility')&&document.querySelectorAll('[data-theme-choice]').length===2&&document.querySelectorAll('[data-new-note-target]').length===2")=="true"});
             for(int i=0;i<100&&(a.NativeIconKey==""||a.NativeIconKey!=NativeIconKey);i++)await Task.Delay(30);
             checks.Add(new{name="tray-icons-adapt-monochrome-independently-of-colored-app-icon",passed=a.NativeIconKey==NativeIconKey&&b.NativeIconKey==NativeIconKey&&NativeIconKey.StartsWith("monochrome-")});
             checks.Add(new{name="neutral-application-with-independent-note-colors",passed=await b.Script("document.documentElement.dataset.color==='neutral'&&document.documentElement.dataset.coloredIcons==='false'&&app.dataset.noteColor==='rose'")=="true"&&await a.Script("app.dataset.noteColor==='blue'")=="true"});
@@ -202,7 +212,7 @@ public partial class MainWindow
             await GoToIndex();
             checks.Add(new{name="back-restores-unfiltered-index",passed=!IsSettingsView&&source.Handle==rootHandle&&await Script("document.querySelectorAll('.note-card').length===homeData.notes.length")=="true"});
             checks.Add(new{name="index-has-no-promotional-heading",passed=await Script("document.querySelector('.index-heading,.index-eyebrow')===null")=="true"});
-            checks.Add(new{name="rename-action-visible-without-grouping",passed=await Script("[...document.querySelectorAll('.card-edit')].every(button=>button.getAttribute('aria-label')==='Rename note')")=="true"});
+            checks.Add(new{name="rename-is-contextual-and-card-icons-only-mark-pins",passed=await Script("!document.querySelector('.card-edit,.card-text svg')&&[...document.querySelectorAll('.card-open svg')].every(icon=>icon.closest('.card-pin'))")=="true"});
             await a.Script("editor.innerHTML='<p>Notes list saves the latest draft</p>';onEdit();clearTimeout(saveTimer)");
             await a.ClickControl("#menuButton");await a.ClickControl("#menuNotesButton");
             await WaitFor("homeData.notes.some(n=>n.plain.includes('Notes list saves the latest draft'))");
@@ -264,7 +274,10 @@ public partial class MainWindow
             await a.Capture("aligned-toolbar-minimum");
             await a.Script("document.getElementById('menuButton').click()");
             await a.WaitFor("noteMenuAnimation===null");
-            checks.Add(new{name="all-colors-visible-and-hittable-at-minimum-window-size",passed=await a.Script("(()=>{const p=document.getElementById('noteColors'),colors=[...p.querySelectorAll('button')];return colors.length===19&&p.scrollWidth<=p.clientWidth&&colors.every(button=>{const r=button.getBoundingClientRect();return r.width>=15&&r.height===40&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});})()")=="true"});
+            // The 320px native window has a 302px WebView. Nineteen 15px
+            // targets plus eighteen 1px separators cannot fit even unpadded.
+            // Verify the actual equal-width layout, visible gaps and hit targets.
+            checks.Add(new{name="all-colors-separated-visible-and-hittable-at-minimum-window-size",passed=await a.Script("(()=>{const p=document.getElementById('noteColors'),colors=[...p.querySelectorAll('button')],rects=colors.map(button=>button.getBoundingClientRect()),style=getComputedStyle(p),bounds=p.getBoundingClientRect(),gap=parseFloat(style.columnGap),expected=(p.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-gap*(colors.length-1))/colors.length;return colors.length===19&&gap>=1&&p.scrollWidth<=p.clientWidth&&colors.every((button,i)=>{const r=rects[i];return r.width>=12&&Math.abs(r.width-expected)<.5&&r.height>=28&&r.top===rects[0].top&&r.left>=bounds.left&&r.right<=bounds.right+.5&&r.bottom<=bounds.bottom&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})&&rects.slice(1).every((r,i)=>r.left-rects[i].right>=1);})()")=="true"});
             await a.ClickControl("[data-note-color='neutral']");await a.WaitFor("activeNote().color==='neutral'");
             checks.Add(new{name="last-color-selects-without-scrolling-at-minimum-size",passed=await a.Script("app.dataset.noteColor==='neutral'&&document.getElementById('noteColors').scrollLeft===0")=="true"});
             await a.ClickControl("[data-note-color='blue']");await a.WaitFor("activeNote().color==='blue'");
@@ -348,15 +361,15 @@ public partial class MainWindow
             await GoToSettings();
             checks.Add(new{name="language-switch-removed",passed=await Script("document.querySelector('[data-language]')===null")=="true"});
             await a.WaitFor("JotI18n.language==='en'");await WaitFor("JotI18n.language==='en'");
-            checks.Add(new{name="english-settings-and-back-label",passed=await Script("document.querySelector('#settingsHandle .index-brand span').textContent==='Settings'&&document.getElementById('settingsBack').getAttribute('aria-label')==='Back to Home'")=="true"});
+            checks.Add(new{name="english-settings-and-back-label",passed=await Script("document.querySelector('.settings-page-heading h1').textContent==='Settings'&&document.getElementById('settingsBack').getAttribute('aria-label')==='Back to Home'")=="true"});
             checks.Add(new{name="ui-language-does-not-change-note-content",passed=noteBeforeLanguage==await a.Script("editor.innerHTML")});
             await a.Script("setInputDirection('rtl')");
             checks.Add(new{name="english-ui-still-supports-persian-and-english",passed=await a.Script("getComputedStyle(editor.querySelector('p')).direction==='ltr'&&[...editor.querySelectorAll('p')].some(p=>getComputedStyle(p).direction==='rtl')")=="true"});
             await settings.Capture("settings-english");
             await GoToIndex();await Capture("index-english");
-            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').getAttribute('aria-label')==='New note'&&document.getElementById('homeClose').getAttribute('aria-label')==='Close window'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
+            checks.Add(new{name="english-index-and-note-ui",passed=await Script("document.getElementById('homeNew').getAttribute('aria-label')==='New note'&&document.getElementById('workspaceClose').getAttribute('aria-label')==='Close window'")=="true"&&await a.Script("document.getElementById('copyButton').textContent.trim()==='Copy'")=="true"});
             await GoToSettings();
-            await settings.Script("preference({language:'fa'}).then(()=>window.legacyLanguageChecked=true)");
+            await settings.Script("JotSettings.preference({language:'fa'}).then(()=>window.legacyLanguageChecked=true)");
             await settings.WaitFor("window.legacyLanguageChecked===true");
             await GoToIndex();
             checks.Add(new{name="legacy-persian-ui-setting-is-ignored",passed=await Script("document.querySelector('.index-app').dir==='ltr'&&document.getElementById('homeNew').getAttribute('aria-label')==='New note'")=="true"});
@@ -376,7 +389,7 @@ public partial class MainWindow
             await a.Script("window.realId=model.activeId;activeNote().id='invalid';model.activeId='invalid';revision++;clearTimeout(saveTimer)");
             var beforeFailedQuit=session.Windows.Count;
             await ClickControl("#settingsQuit");
-            await WaitFor("document.getElementById('settingsQuit').disabled===false&&!document.getElementById('homeError').hidden");
+            await WaitFor("document.getElementById('settingsQuit').disabled===false&&JotToast.has('settings-error')");
             checks.Add(new{name="quit-cancels-on-save-error",passed=session.Windows.Count==beforeFailedQuit&&await Script("document.getElementById('settingsQuit').getAttribute('aria-busy')==='false'")=="true"});
             await a.Script("activeNote().id=window.realId;model.activeId=window.realId;editor.innerHTML='<p>Quit save sentinel A</p>';onEdit();clearTimeout(saveTimer)");
             await b.Script("editor.innerHTML='<p>Quit save sentinel B</p>';onEdit();clearTimeout(saveTimer)");
@@ -385,7 +398,9 @@ public partial class MainWindow
             var quitData=(await store.Load())!.Value.GetProperty("notes").EnumerateArray().ToArray();
             checks.Add(new{name="quit-flushes-every-open-note",passed=TestHostActions.Contains("quit")&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel A"))&&quitData.Any(n=>n.GetProperty("plain").GetString()!.Contains("Quit save sentinel B"))});
             checks.Add(new{name="quit-shows-pending-spinner-and-label",passed=await Script("document.getElementById('settingsQuit').disabled&&document.getElementById('settingsQuit').getAttribute('aria-busy')==='true'&&getComputedStyle(document.querySelector('#settingsQuit .quit-spinner')).display!=='none'")=="true"});
-            await MeasureDirectRendering(checks);
+            // This experimental WinForms host is not used by Jot. Keep its
+            // mixed-host benchmark opt-in, separate from production regression.
+            if(Environment.GetCommandLineArgs().Contains("--direct-rendering-probe"))await MeasureDirectRendering(checks);
             checks.Add(new{name="no-renderer-exceptions",passed=session.Windows.All(w=>w.RuntimeErrors.Count==0)});
             var report=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});
             await File.WriteAllTextAsync(Path.Combine(testOutput,"results.json"),report);

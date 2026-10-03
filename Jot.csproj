@@ -34,6 +34,17 @@
     <Content Include="editor-menu.js;tests\context-tests.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="context-menus.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="home.html;home.js;image.html;image.js;shared.js;design-tokens.js;workspace.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="library.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="workspace-tabs.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="workspace-editor.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="writing-settings.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="workspace.html;workspace.js;workspace-shell.css;workspace-tab-actions.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="notes-files.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="document-heading.js;writing-tools.js;document-note.css" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="assets\emoji\emoji-values.txt" LogicalName="Jot.EmojiValues" />
+    <Content Include="notifications.js;notifications.css;shortcut-bindings.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="browser-tabs.css;tab-colors.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="note-personalization.js;note-personalization.css;file-state.css;shortcuts.html;shortcuts.js;shortcuts.css;app-shortcuts.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="i18n.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="settings.html;settings.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="tests\renderer-tests.js" CopyToOutputDirectory="PreserveNewest" />
