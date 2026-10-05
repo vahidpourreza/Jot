@@ -76,7 +76,7 @@
     const [layout,context]=await Promise.all([request('workspace-layout'),request('context')]);
     state.view=context.view||'home';state.tabs=context.tabs||[];maximizeState(context.fullscreen);
     importView(layout.home,'workspaceHome');importView(layout.settings,'workspaceSettings');importView(layout.editor,'app');
-    await loadScript('home.js');await loadScript('shortcuts.js');await loadScript('settings.js');await loadScript('renderer.js');await loadScript('editor-menu.js');await loadScript('notes-files.js');await loadScript('document-heading.js');await loadScript('note-text-size.js');await loadScript('document-blocks.js');await loadScript('writing-tools.js');await loadScript('app-shortcuts.js');
+    await loadScript('home.js');await loadScript('shortcuts.js');await loadScript('settings.js');await loadScript('assets/editor/editor.js');await loadScript('renderer.js');await loadScript('editor-menu.js');await loadScript('notes-files.js');await loadScript('document-heading.js');await loadScript('note-text-size.js');await loadScript('app-shortcuts.js');
     await Promise.all([JotHome.ready,JotSettings.ready,JotNoteEditor.ready,JotShortcutBindings.ready]);
     tabSwitcher=JotTabSwitcher.create({snapshot:()=>({tabs:state.tabs,settingsOpen:state.settingsOpen,activeId:state.activeId,busy:state.busy||state.modeBusy}),onSwitch:id=>runAction('tab-switch',id)});
     tabActions=JotWorkspaceTabActions.create({request,onAction:runAction,onError:error,

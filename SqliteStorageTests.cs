@@ -117,7 +117,7 @@ public partial class MainWindow
         // A database from a newer app, or a damaged database, must never trigger JSON fallback.
         await SetStoreTrigger(migrated,"PRAGMA user_version=999;");rejected=false;
         try{await new NoteStore(migrated.Root).Load();}catch(InvalidDataException){rejected=true;}
-        Check("future-schema-rejected-without-downgrade",rejected&&Convert.ToInt64(await StoreScalar(migrated,"PRAGMA user_version;"))==999);await SetStoreTrigger(migrated,"PRAGMA user_version=2;");
+        Check("future-schema-rejected-without-downgrade",rejected&&Convert.ToInt64(await StoreScalar(migrated,"PRAGMA user_version;"))==999);await SetStoreTrigger(migrated,"PRAGMA user_version=3;");
         var missing=migrated.FilePath+".moved-for-test";File.Move(migrated.FilePath,missing);rejected=false;
         try{await new NoteStore(migrated.Root).Load();}catch(InvalidDataException){rejected=true;}
         Check("missing-database-never-reimports-stale-json-over-backup",rejected&&!File.Exists(migrated.FilePath)&&File.Exists(migrated.BackupPath));File.Move(missing,migrated.FilePath);

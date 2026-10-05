@@ -1,0 +1,242 @@
+/* editorcn supplies the editor UI; Jot supplies the existing app theme and
+   writing metrics. The note's selected font/line height always wins. */
+body:has(#app[hidden]) :is(.jot-selection-bubble,.block-editor-slash-menu,.jot-editor-positioner),
+body:has(#app[inert]) :is(.jot-selection-bubble,.block-editor-slash-menu,.jot-editor-positioner) { display: none !important; }
+body:has(.jot-editor-positioner) .jot-selection-bubble,
+body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !important; pointer-events: none !important; }
+:root {
+  --popover: var(--menu-surface, var(--card));
+  --popover-foreground: var(--foreground);
+  --accent: var(--muted);
+  --accent-foreground: var(--foreground);
+}
+
+/* Workspace views are nested flex items. Give every content wrapper a shrinkable
+   inline size; the toolbar and table wrappers own their horizontal scrolling. */
+#writingArea:has(#richEditorHost),
+#richEditorHost,
+.jot-block-editor,
+.jot-block-editor > .block-editor,
+.jot-block-editor .block-editor-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.jot-block-editor { min-height: 180px; font-family: inherit; }
+.jot-block-editor .block-editor-content { min-height: 180px; }
+.jot-block-editor .block-editor-content .ProseMirror.editor {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 180px;
+  padding: 10px 23px 80px 34px;
+  overflow: visible;
+  font-family: var(--editor-font-family, JotEditor, IRANSansX, 'Segoe UI', sans-serif);
+  font-size: var(--editor-size, 16px);
+  line-height: var(--editor-line-height, 1.95);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  transition: none;
+}
+
+.jot-block-editor .editor :is(p, div, li, blockquote, h1, h2, h3, h4, h5, h6) {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+.jot-block-editor .editor bdi { unicode-bidi: isolate; }
+.jot-block-editor .editor bdi[data-jot-bidi=token] { direction: ltr; }
+.jot-block-editor .editor :is(p, div, li, blockquote, h1, h2, h3, h4, h5, h6, td, th)[dir] { unicode-bidi: isolate; }
+.jot-block-editor .editor [data-jot-align=left] { text-align: left; }
+.jot-block-editor .editor [data-jot-align=center] { text-align: center; }
+.jot-block-editor .editor [data-jot-align=right] { text-align: right; }
+.jot-block-editor .editor [data-jot-align=justify] { text-align: justify; }
+.jot-block-editor .editor p { margin: 0; line-height: inherit; }
+.jot-block-editor .editor :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: .55em .22em;
+  font-weight: 700;
+  line-height: inherit;
+}
+.jot-block-editor .editor h1 { font-size: 1.55em; }
+.jot-block-editor .editor h2 { font-size: 1.35em; }
+.jot-block-editor .editor h3 { font-size: 1.2em; }
+.jot-block-editor .editor :is(h4, h5, h6) { font-size: 1em; }
+.jot-block-editor .editor :is(ul, ol) { padding: 0; padding-inline-start: 1.6em; margin-block: .25em; }
+.jot-block-editor .editor li { margin-block: 0; line-height: inherit; }
+.jot-block-editor .editor blockquote {
+  border: 0;
+  border-inline-start: 3px solid var(--border);
+  margin-block: .4em;
+  padding: 0;
+  padding-inline-start: .8em;
+  color: var(--muted-foreground);
+}
+.jot-block-editor .editor blockquote:hover { background: transparent; border-inline-start-color: var(--border); }
+.jot-block-editor .editor pre {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin-block: .5em;
+  padding: 10px 12px;
+  font-family: Consolas, 'Cascadia Code', monospace;
+  font-size: .92em;
+  line-height: inherit;
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+  white-space: pre-wrap;
+}
+.jot-block-editor .editor code { font-family: Consolas, 'Cascadia Code', monospace; font-size: .92em; border-radius: 3px; padding: 1px 3px; }
+.jot-block-editor .editor pre code { padding: 0; background: none; font-size: inherit; }
+.jot-block-editor .editor :is(p, h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+.jot-block-editor .editor .tableWrapper { max-width: 100%; overflow-x: auto; margin-block: .5em; }
+.jot-block-editor .editor table { table-layout: fixed; width: 100%; max-width: 100%; margin: 0; }
+.jot-block-editor .editor :is(td, th) { min-width: 50px; padding: 5px 8px; text-align: start; }
+.jot-block-editor .editor :is(td, th) p { margin: 0; }
+.jot-block-editor .editor .selectedCell { background: color-mix(in srgb, var(--ring) 18%, transparent); }
+.jot-block-editor .editor .column-resize-handle { position: absolute; inset-block: 0; right: -2px; width: 4px; background: var(--ring); pointer-events: none; }
+.jot-block-editor .editor.resize-cursor { cursor: col-resize; }
+.jot-block-editor .editor :is(td, th) { position: relative; }
+.jot-block-editor .editor ul[data-type='taskList'] { list-style: none; padding-inline-start: 0; }
+.jot-block-editor .editor li[data-type='taskItem'] { display: flex; align-items: flex-start; gap: 8px; }
+.jot-block-editor .editor li[data-type='taskItem'] > label { flex: none; margin-top: .25em; line-height: 1; }
+.jot-block-editor .editor li[data-type='taskItem'] > div { flex: 1; min-width: 0; }
+.jot-block-editor .editor input[type='checkbox'] { accent-color: var(--primary); width: 14px; height: 14px; }
+.jot-block-editor .editor img { outline: none; }
+.jot-block-editor .editor img.ProseMirror-selectednode { outline: 2px solid var(--ring); outline-offset: 2px; box-shadow: none; }
+.jot-block-editor .editor.ProseMirror-focused ::selection { background: color-mix(in srgb, var(--primary) 40%, transparent); }
+.jot-block-editor .editor p:empty::before { content: none; }
+.jot-block-editor .editor :is(p, div)[data-jot-plain-line] { margin-block: 0; }
+.jot-block-editor .editor :is(.is-editor-empty, .is-empty)::before { content: none !important; }
+
+/* Reserve a small gutter for editorcn's block handles without shifting the title. */
+.jot-block-editor .drag-handle {
+  gap: 0;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--background);
+  opacity: .7;
+  transition: opacity 100ms, background-color 100ms;
+}
+.jot-block-editor .drag-handle:hover { opacity: 1; background: var(--muted); }
+.jot-block-editor .drag-handle:active { transform: none; }
+.jot-block-editor .block-editor-add-block { width: 15px; height: 22px; border-radius: 3px; }
+.jot-block-editor .block-editor-drag-handle-icon { width: 15px; }
+
+.jot-editor-toolbar { display: flex; align-items: center; gap: 2px; min-width: max-content; height: 30px; }
+.app[data-document=true] #formatBar:has(.jot-editor-toolbar) { overflow-x: auto; overflow-y: hidden; padding-block: 1px; }
+.jot-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  height: 28px;
+  min-width: 27px;
+  padding: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+.jot-tool > svg { width: 15px; height: 15px; flex: none; }
+.jot-tool .jot-chevron { width: 10px; height: 10px; }
+.jot-tool-label { padding-inline: 7px; }
+.jot-tool-label > span { min-width: 35px; text-align: start; }
+.jot-tool:hover:not(:disabled), .jot-tool[aria-pressed=true], .jot-tool[data-active], .jot-tool[data-popup-open] { background: var(--muted); color: var(--foreground); }
+.jot-tool-separator { flex: none; width: 1px; height: 15px; margin-inline: 3px; background: var(--border); }
+.jot-editor-positioner { z-index: 1150; }
+.jot-selection-bubble { z-index: 1100; }
+.jot-editor-menu, .jot-editor-popover {
+  color: var(--foreground);
+  background: var(--menu-surface, var(--card));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px;
+  box-shadow: 0 8px 26px #0003;
+  font-family: IRANSansX, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  direction: ltr;
+  transform-origin: var(--transform-origin);
+  transition: opacity 100ms, transform 100ms;
+}
+.jot-editor-menu { min-width: 205px; max-width: min(300px, calc(100vw - 16px)); max-height: min(390px, var(--available-height)); overflow-y: auto; scrollbar-width: thin; }
+.jot-editor-menu[data-starting-style], .jot-editor-menu[data-ending-style], .jot-editor-popover[data-starting-style], .jot-editor-popover[data-ending-style] { opacity: 0; transform: translateY(-3px); }
+.jot-editor-menu-item { min-height: 30px; display: flex; align-items: center; gap: 9px; padding: 5px 7px; border-radius: 4px; cursor: pointer; outline: none; user-select: none; }
+.jot-editor-menu-item > svg { width: 15px; height: 15px; flex: none; color: var(--muted-foreground); }
+.jot-editor-menu-item > span { flex: 1; }
+.jot-editor-menu-item .jot-action-check { width: 12px; height: 12px; color: var(--foreground); }
+.jot-editor-menu-item[data-highlighted] { background: var(--menu-hover, var(--muted)); }
+.jot-editor-menu-item[data-disabled] { opacity: .4; cursor: default; }
+.jot-editor-menu-item[data-danger], .jot-editor-menu-item[data-danger] > svg { color: var(--destructive, #dc6262); }
+.jot-editor-menu-separator { height: 1px; margin: 4px 3px; background: var(--border); }
+.jot-editor-popover { padding: 11px; max-height: var(--available-height); max-width: calc(100vw - 16px); overflow-y: auto; }
+.jot-editor-popover-title { margin: 0 0 9px; font-size: 12px; font-weight: 600; }
+.jot-color-picker { width: 208px; }
+.jot-color-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.jot-color-swatch { width: 19px; height: 22px; border: 1px solid currentColor; border-radius: 4px; padding: 0; background: transparent; font-weight: 700; font-size: 11px; }
+.jot-highlight-swatch { height: 19px; border-color: #8885; }
+.jot-color-swatch:hover { outline: 2px solid var(--ring); outline-offset: 1px; }
+.jot-editor-text-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 4px; padding: 5px 6px; background: transparent; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.jot-editor-text-action:hover { background: var(--muted); color: var(--foreground); }
+.jot-editor-text-action > svg, .jot-editor-submit > svg { width: 13px; height: 13px; }
+.jot-color-picker .jot-editor-text-action { margin-block: 4px 0; }
+.jot-color-picker .jot-editor-menu-separator { margin-block: 7px 10px; }
+.jot-link-editor { width: 270px; }
+.jot-editor-input { width: 100%; min-width: 0; height: 30px; padding: 4px 7px; color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 4px; font: inherit; font-size: 12px; }
+.jot-editor-input:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
+.jot-editor-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 8px; }
+.jot-editor-submit { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); color: var(--foreground); font: inherit; font-size: 12px; }
+.jot-editor-submit:hover { background: var(--menu-hover, var(--muted)); }
+.jot-editor-form-error { margin: 7px 0 0; color: var(--destructive, #dc6262); font-size: 11px; }
+.jot-table-insert { width: 230px; }
+.jot-table-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.jot-table-dimensions label { display: grid; gap: 4px; color: var(--muted-foreground); font-size: 11px; }
+.jot-table-header-option { display: flex; align-items: center; gap: 6px; margin-block: 10px; font-size: 12px; }
+.jot-table-header-option input { accent-color: var(--primary); }
+.jot-table-insert .jot-editor-submit { width: 100%; }
+
+/* Match upstream popovers to Jot and keep them usable in a 320px note window. */
+.block-editor-bubble-menu { height: auto; min-height: 32px; max-width: calc(100vw - 16px); flex-wrap: wrap; padding: 3px; border-radius: 6px; font-family: IRANSansX, 'Segoe UI', sans-serif; direction: ltr; animation: none; }
+.block-editor-bubble-btn { height: 26px; padding-inline: 5px; border-radius: 4px; font-size: 11px; }
+.block-editor-bubble-btn > svg, .block-editor-bubble-dropdown-icon { width: 14px; height: 14px; }
+.block-editor-bubble-dropdown { border-radius: 6px; max-width: calc(100vw - 16px); max-height: min(360px, calc(100vh - 70px)); overflow-y: auto; animation: none; }
+.block-editor-bubble-dropdown-item { border-radius: 4px; font-size: 12px; }
+.block-editor-slash-menu { width: 280px; min-width: 0; max-width: calc(100vw - 16px); max-height: calc(100vh - 90px); border-radius: 6px; font-family: IRANSansX, 'Segoe UI', sans-serif; direction: ltr; }
+.react-renderer:has(> .block-editor-slash-menu) { z-index: 1120; }
+.block-editor-slash-menu-list { max-height: 250px; }
+.block-editor-slash-menu-item { border-radius: 4px; gap: 9px; padding: 7px 8px; }
+.block-editor-slash-menu-item-label { font-size: 12px; }
+.block-editor-slash-menu-item-desc { font-size: 10px; line-height: 1.5; }
+.block-editor-slash-menu-search { padding: 8px 9px; }
+.block-editor-slash-menu-search > svg { width: 15px; height: 15px; }
+.block-editor-slash-menu-search-input { font-size: 12px; }
+.block-editor-link-input { border-radius: 4px; }
+.block-editor-bubble-overlay { background: transparent; }
+:root[data-theme=light] .jot-block-editor .editor pre .hljs-comment { color: #697175; }
+:root[data-theme=light] .jot-block-editor .editor pre :is(.hljs-keyword, .hljs-selector-tag) { color: #7353a7; }
+:root[data-theme=light] .jot-block-editor .editor pre :is(.hljs-string, .hljs-symbol) { color: #416827; }
+:root[data-theme=light] .jot-block-editor .editor pre :is(.hljs-title, .hljs-attr) { color: #755118; }
+:root[data-theme=light] .jot-block-editor .editor pre :is(.hljs-number, .hljs-literal) { color: #995020; }
+
+@media (max-width: 450px) {
+  .jot-block-editor .block-editor-content .ProseMirror.editor { padding-inline: 30px 16px; }
+  .jot-editor-toolbar { gap: 1px; }
+  .jot-tool { min-width: 26px; padding: 4px; }
+  .jot-tool-label { padding-inline: 5px; }
+  .block-editor-bubble-btn { padding-inline: 4px; }
+  .block-editor-bubble-btn-text { max-width: 52px; }
+  .block-editor-bubble-separator { margin-inline: 1px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jot-editor-menu, .jot-editor-popover, .block-editor-slash-menu, .jot-block-editor .drag-handle { transition: none; animation: none; }
+}

@@ -10,7 +10,7 @@ internal sealed partial class NoteStore
     private void EnsureDatabase()
     {
         if(File.Exists(FilePath)){observedDatabase=true;return;}
-        if(observedDatabase||File.Exists(BackupPath))throw new InvalidDataException("Jot's database is missing. Restore a database backup; the old JSON will not be imported over newer notes.");
+        if(observedDatabase||File.Exists(BackupPath)||File.Exists(FilePath+".before-v2.bak")||File.Exists(FilePath+".before-v3.bak"))throw new InvalidDataException("Jot's database is missing. Restore a database backup; the old JSON will not be imported over newer notes.");
         if(Directory.Exists(FilePath))throw new IOException("Jot's database path is occupied by a folder.");
         Directory.CreateDirectory(Root);
         JsonElement? legacy=null;

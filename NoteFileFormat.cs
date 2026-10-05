@@ -10,6 +10,7 @@ namespace Jot;
 internal sealed record NoteFileData(JsonObject Note,string Format,string Digest);
 internal static class NoteFileFormat
 {
+    internal const int CurrentVersion=2;
     internal const int MaxBytes=32*1024*1024;
     internal static string Format(string path)=>Path.GetExtension(path).ToLowerInvariant() switch{
         ".jot"=>"jot",".txt"=>"txt",_=>throw new InvalidDataException("Choose a .jot or .txt file.")};
@@ -38,7 +39,7 @@ internal static class NoteFileFormat
             JsonObject document;
             try{document=JsonNode.Parse(bytes,new JsonNodeOptions(),new JsonDocumentOptions{MaxDepth=64})?.AsObject()??throw new JsonException();}
             catch(Exception error) when(error is JsonException or InvalidOperationException){throw new InvalidDataException("This is not a valid Jot note file.",error);}
-            if(document["format"]?.ToString()!="jot-note"||document["version"] is not JsonValue version||!version.TryGetValue<int>(out var number)||number!=1||document["note"] is not JsonObject source)
+            if(document["format"]?.ToString()!="jot-note"||document["version"] is not JsonValue version||!version.TryGetValue<int>(out var number)||number is <1 or >CurrentVersion||document["note"] is not JsonObject source)
                 throw new InvalidDataException("This Jot file format is not supported.");
             note=new();
             foreach(var key in new[]{"title","html","plain","color","view","icon"})if(source[key] is {} value)note[key]=value.DeepClone();
@@ -50,7 +51,8 @@ internal static class NoteFileFormat
         }
         return new(note,format,Digest(bytes));
     }
-    internal static byte[] Encode(JsonElement note,string format)
+    internal static byte[] Encode(JsonElement note,string format)=>EncodeVersion(note,format,CurrentVersion);
+    private static byte[] EncodeVersion(JsonElement note,string format,int version)
     {
         if(format is not ("txt" or "jot"))throw new InvalidDataException("Unsupported note file format.");
         if(format=="txt")return new UTF8Encoding(false).GetBytes(note.GetProperty("plain").GetString()??"");
@@ -61,9 +63,13 @@ internal static class NoteFileFormat
             if(key=="icon"&&(value.ValueKind!=JsonValueKind.String||value.GetString()=="icon:notepad-text"))continue;
             data[key]=JsonNode.Parse(value.GetRawText());
         }
-        return JsonSerializer.SerializeToUtf8Bytes(new JsonObject{["format"]="jot-note",["version"]=1,["note"]=data},new JsonSerializerOptions{WriteIndented=true});
+        return JsonSerializer.SerializeToUtf8Bytes(new JsonObject{["format"]="jot-note",["version"]=version,["note"]=data},new JsonSerializerOptions{WriteIndented=true});
     }
-    internal static string ContentDigest(JsonElement note,string format)=>Digest(Encode(note,format));
+    // A content fingerprint is independent of the file envelope version. Keep
+    // its historical encoding so opening/upgrading a clean v1 file does not
+    // mark it dirty or silently trigger an automatic file save. Actual saved
+    // bytes use v2 above, which older Jot readers already reject safely.
+    internal static string ContentDigest(JsonElement note,string format)=>Digest(EncodeVersion(note,format,1));
     internal static async Task<string> Write(string path,byte[] bytes,string? expectedDigest,Func<Task>? testBeforeCommit=null)
     {
         if(bytes.Length>MaxBytes)throw new InvalidDataException("This note is too large for a standalone file (32 MB maximum).");

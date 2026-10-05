@@ -13,7 +13,7 @@ public partial class MainWindow
         if(!testing||!session.ExitProbe)throw new InvalidOperationException("Exit probes require isolated test mode.");
         Directory.CreateDirectory(testOutput);
         int index=Array.IndexOf(args,"--probe-scenario");var scenario=index>=0&&index+1<args.Length?args[index+1]:"";
-        if(scenario is "responsiveness" or "desktop-input" or "browser-tabs" or "tab-colors" or "selection-appearance" or "document-ui" or "document-files" or "emoji-picker" or "note-text-size" or "table-writing" or "visual-tab-switcher" or "trash")
+        if(scenario is "responsiveness" or "desktop-input" or "browser-tabs" or "tab-colors" or "selection-appearance" or "document-ui" or "document-files" or "emoji-picker" or "note-text-size" or "table-writing" or "visual-tab-switcher" or "trash" or "editor-migration" or "editor-format")
         {
             var checks=new List<object>();
             try{
@@ -26,6 +26,8 @@ public partial class MainWindow
                 if(scenario=="table-writing")await VerifyTableWriting(checks);
                 if(scenario=="visual-tab-switcher")await VerifyVisualTabSwitcher(checks);
                 if(scenario=="trash")await VerifyTrash(checks);
+                if(scenario=="editor-migration")await VerifyEditorMigration(checks);
+                if(scenario=="editor-format")await VerifyEditorFormatCompatibility(checks);
                 if(scenario=="document-files")await VerifyDocumentFileIdentity(checks);
                 if(scenario=="emoji-picker")await VerifyEmojiPicker(checks);
                 if(scenario is "browser-tabs" or "tab-colors"){await VerifyTabColors(checks);await VerifyReopenShortcutMigration(checks);}

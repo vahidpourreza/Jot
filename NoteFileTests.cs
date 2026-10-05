@@ -16,7 +16,7 @@ public partial class MainWindow
         foreach(var item in new[]{
             ("unsupported.html","<p>Not a supported note file</p>"),
             ("invalid.jot","{broken"),
-            ("future.jot","{\"format\":\"jot-note\",\"version\":2,\"note\":{\"html\":\"\",\"plain\":\"\"}}"),
+            ("future.jot","{\"format\":\"jot-note\",\"version\":3,\"note\":{\"html\":\"\",\"plain\":\"\"}}"),
             ("missing-text.jot","{\"format\":\"jot-note\",\"version\":1,\"note\":{\"html\":4,\"plain\":\"\"}}"),
             ("binary.txt","not\0text")})
         {

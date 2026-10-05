@@ -41,7 +41,7 @@ internal sealed partial class NoteStore
         defaults["fontSize"]=Math.Clamp(writing["fontSize"]?.GetValue<int>()??16,13,24);
         defaults["lineHeight"]=Math.Clamp(writing["lineHeight"]?.GetValue<double>()??1.95,1.2,2.5);
         Execute(connection,transaction,"INSERT INTO note_preferences(note_id,value) SELECT id,$value FROM notes;",("$value",defaults.ToJsonString()));
-        Execute(connection,transaction,$"PRAGMA user_version={SchemaVersion};");transaction.Commit();backedUpThisSession=true;
+        Execute(connection,transaction,"PRAGMA user_version=2;");transaction.Commit();backedUpThisSession=true;
     }
     public Task<JsonElement> SaveNotePreferences(string id,JsonElement patch)=>Run(connection=>{
         using var transaction=connection.BeginTransaction();

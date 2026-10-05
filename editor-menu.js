@@ -50,9 +50,9 @@ window.JotEditorMenu=(()=>{
     }
     rememberSelection();context={selection:selection(),image:image&&editor.contains(image)?image:null,noteId:model.activeId,revision};
     if(!context.selection){restoreSelection();context.selection=selection();}
-    const h=histories.get(model.activeId),selected=!context.selection.range.collapsed;menu.replaceChildren();
+    const selected=!JotRichEditor.editor.state.selection.empty;menu.replaceChildren();
     if(context.image){add('open-image','Open image','scan');add('copy-image','Copy image','copy');add('remove-image','Remove image','trash-2');separator();}
-    add('undo','Undo','undo-2','Ctrl+Z',!h||h.index===0);add('redo','Redo','redo-2','Ctrl+Y',!h||h.index>=h.values.length-1);separator();
+    add('undo','Undo','undo-2','Ctrl+Z',!JotRichEditor.canUndo());add('redo','Redo','redo-2','Ctrl+Y',!JotRichEditor.canRedo());separator();
     add('cut','Cut','scissors','Ctrl+X',!selected);add('copy','Copy','copy','Ctrl+C',!selected);add('paste','Paste','clipboard','Ctrl+V');separator();directions();separator();add('select-all','Select all','text-select','Ctrl+A');
     const files=window.JotNoteFiles?.editorMenuItems()||[];
     if(files.length){separator();for(const item of files)add(item.id,item.label,item.icon,item.shortcut,item.disabled);}
@@ -88,7 +88,7 @@ window.JotEditorMenu=(()=>{
       else if(action==='remove-image')command('delete');
       else if(action==='undo'||action==='redo')undo(action==='redo');
       else if(action.startsWith('direction-'))setParagraphDirection(action.slice('direction-'.length));
-      else if(action==='select-all'){const r=document.createRange();r.selectNodeContents(editor);getSelection().removeAllRanges();getSelection().addRange(r);rememberSelection();}
+      else if(action==='select-all'){JotRichEditor.editor.commands.selectAll();rememberSelection();}
       close();
     }catch(error){const cancelled=c.cancelled;close();if(!cancelled)showError(error);}
     finally{busy=false;menu.removeAttribute('aria-busy');button.classList.remove('pending');button.querySelector('span').textContent=oldLabel;}

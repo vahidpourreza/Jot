@@ -122,6 +122,10 @@ public partial class MainWindow
         try
         {
             await WaitFor("window.jotReady===true");
+            if(await Script("!!window.JotRichEditor")=="true")
+            {
+                await RunCurrentEditorRegressionTests();return;
+            }
             // The broad legacy editor fixture exercises separate windows;
             // fresh-profile Tabs defaults are checked in the shortcut suite.
             await store.SavePreferences(JsonSerializer.SerializeToElement(new{newNoteTarget="window"}));await session.Changed();

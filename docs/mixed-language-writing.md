@@ -1,5 +1,7 @@
 # Mixed Persian/English writing
 
+As of Jot 1.7, editable note bodies implement these direction rules through ProseMirror attributes and mapped inline decorations. Do not run the legacy DOM normalizer against the managed editor DOM. Plain-text Copy retains the original characters, and opening a note does not rewrite its stored HTML. The original `bidi.js` analysis remains shared with previews; the older DOM implementation and tests discussed below are historical background. See [editorcn migration](editorcn-migration.md).
+
 Jot 1.3.0 adds automatic mixed-direction handling without changing the app's English interface or requiring a Persian/English writing-mode switch.
 
 ## What changed

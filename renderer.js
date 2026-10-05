@@ -1,11 +1,12 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const editor = $('editor'), app = $('app'), request = JotBridge.request;
+let editor = $('editor');
+const app = $('app'), request = JotBridge.request;
 let model = {version:2,activeId:null,notes:[],prefs:{...JotDesign.defaults}};
 let appPreferences={...JotDesign.defaults},notePreferenceChain=Promise.resolve(),notePreferenceRevision=0,confirmedNoteView={};
 let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer;
 let historyTimer=0,typingHistoryPending=false;
-let saveChain=Promise.resolve(),bookmark=null,bookmarkDirection=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
+let saveChain=Promise.resolve(),bookmark=null,bookmarkDirection=null,pmBookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
 let cutting=false;
 let inputDirection='rtl',deleting=false;
 let noteFullscreen=false,fullscreenBusy=false;
@@ -23,15 +24,11 @@ let noteMenuAnimation=null,toolbarAnimation=null,colorMenuAnimation=null,toolbar
 const visibilityAnimations=new Map();
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 const formatMenus=[['colorMenuButton','colorMenu']];
-const histories=new Map();
 const EMPTY='<p dir="auto"><br></p>';
 const blockSelector='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,table,td,th';
 const imagePattern=/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 const allowedTags=new Set(['P','DIV','BR','B','BDI','STRONG','I','EM','U','S','STRIKE','SPAN','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','IMG','A','FONT','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION','HR','MARK','SUB','SUP','FIGURE','FIGCAPTION']);
 const discardTags=new Set(['SCRIPT','STYLE','IFRAME','OBJECT','SVG','MATH','FORM','INPUT','BUTTON','VIDEO','AUDIO','LINK','META','TEMPLATE']);
-let directionChanges=[];
-const directionObserver=new MutationObserver(records=>directionChanges.push(...records));
-directionObserver.observe(editor,{subtree:true,childList:true,characterData:true});
 JotBridge.on(data=>{
   if(data.event==='flush'){
     rememberTabView();
@@ -175,28 +172,21 @@ function sanitizeHtml(html) {
   for (const node of doc.body.childNodes) container.append(clean(node));
   return container.innerHTML || EMPTY;
 }
-function normalizeDirection(full=true) {
-  if(composing)return;
-  const backward=bookmarkDirection?.range===bookmark&&bookmarkDirection.backward;
-  bookmark=JotBidi.wrapLooseContent(editor,bookmark);
-  const changes=directionChanges.concat(directionObserver.takeRecords());directionChanges=[];
-  const blocks=new Set();
-  if(full)editor.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
-  else for(const change of changes){
-    let node=change.target.nodeType===Node.ELEMENT_NODE?change.target:change.target.parentElement;
-    while(node&&node!==editor){if(node.matches(blockSelector+',pre,code'))blocks.add(node);node=node.parentElement;}
-    for(const added of change.addedNodes||[]){
-      if(added.nodeType!==Node.ELEMENT_NODE)continue;
-      if(added.matches(blockSelector+',pre,code'))blocks.add(added);
-      added.querySelectorAll(blockSelector+',pre,code').forEach(block=>blocks.add(block));
-    }
-  }
-  bookmark=JotBidi.normalize(editor,blocks,inputDirection,bookmark);
-  if(bookmark)bookmarkDirection={range:bookmark,backward};
-  // Ignore our own structural wrappers; the next edit should visit only its
-  // affected blocks, not replay the whole normalization.
-  directionObserver.takeRecords();
-}
+// editorcn/Tiptap is the only editing engine. The host retains window, file,
+// preference and clipboard ownership; ProseMirror owns document/history state.
+const editorHost=document.createElement('div');editorHost.id='richEditorHost';editor.replaceWith(editorHost);
+const legacyControls=document.createElement('div');legacyControls.hidden=true;legacyControls.inert=true;
+legacyControls.id='legacyFormattingControls';legacyControls.append(...$('formatBar').childNodes);$('formatBar').after(legacyControls);
+const dock=document.querySelector('.quiet-footer');$('writingArea').before(dock);dock.classList.add('document-toolbar');dock.ariaLabel='Document tools';app.dataset.document='true';
+const rich=window.JotRichEditor=JotEditorFactory.create({
+  contentHost:editorHost,toolbarHost:$('formatBar'),onChange:()=>onEdit(),
+  onSelectionChange:()=>{if(ready){pmBookmark=rich.selection();refreshToolbar();}},
+  onImage:()=>{rememberSelection();$('imageInput').click();},onError:showError,
+  clipboard:payload=>request('clipboard-write',payload),getInputDirection:()=>inputDirection,
+  plainText:html=>{const holder=document.createElement('div');holder.innerHTML=html;return editorPlainText(holder);}
+});
+editor=rich.editor.view.dom;
+function normalizeDirection(){if(!composing)rich.refreshDirection();}
 function setInputDirection(direction) {
   inputDirection=direction==='rtl'?'rtl':'ltr';
   if(composing)return;
@@ -208,57 +198,27 @@ function updateEmpty() {
   const empty = !editor.textContent.trim() && !editor.querySelector('img');
   editor.dataset.empty = String(empty);
 }
-function capture(html=editor.innerHTML) {
+function capture(html=rich.getHTML()) {
   if (!ready || !activeNote()) return;
   const note = activeNote();
   note.html = html;
-  note.plain = editorPlainText();
+  note.plain = rich.getText();
   note.updatedAt = Date.now();
 }
-function editorSelectionState() {
-  const selection=getSelection();
-  if(!selection.rangeCount||!editor.contains(selection.anchorNode)||!editor.contains(selection.focusNode))return null;
-  const path=node=>{const parts=[];while(node!==editor){let index=0;for(let sibling=node.previousSibling;sibling;sibling=sibling.previousSibling)index++;parts.unshift(index);node=node.parentNode;}return parts;};
-  return {a:path(selection.anchorNode),ao:selection.anchorOffset,f:path(selection.focusNode),fo:selection.focusOffset};
-}
+function editorSelectionState(){rich.syncSelection();return rich.selection();}
 function restoreEditorSelection(state) {
-  if(!state)return false;
-  try{
-    const at=parts=>parts.reduce((node,index)=>node?.childNodes[index],editor),anchor=at(state.a),focus=at(state.f);
-    if(!anchor||!focus)return false;
-    const length=node=>node.nodeType===Node.TEXT_NODE?node.length:node.childNodes.length;
-    if(state.ao>length(anchor)||state.fo>length(focus))return false;
-    editor.focus({preventScroll:true});getSelection().setBaseAndExtent(anchor,state.ao,focus,state.fo);rememberSelection();return true;
-  }catch{return false;}
+  if(!rich.restoreSelection(state))return false;rememberSelection();return true;
 }
 function sameEditorSelection(state) {
   const current=editorSelectionState();
-  return !!current&&!!state&&current.ao===state.ao&&current.fo===state.fo&&current.a.length===state.a.length&&current.f.length===state.f.length&&current.a.every((value,index)=>value===state.a[index])&&current.f.every((value,index)=>value===state.f[index]);
+  return !!current&&!!state&&current.anchor===state.anchor&&current.head===state.head&&current.all===state.all&&JSON.stringify(current.json)===JSON.stringify(state.json);
 }
 function rememberHistorySelection() {
-  const history=histories.get(model.activeId);if(!history)return;
-  history.selections??=Array(history.values.length).fill(null);
-  const selection=editorSelectionState();if(selection)history.selections[history.index]=selection;
-}
-function historyRecord(kind = 'command',html=editor.innerHTML) {
-  const id = model.activeId;
-  const selection=editorSelectionState();
-  if (!histories.has(id)) histories.set(id, { values: [html], selections:[selection], index: 0, time: 0, kind: '' });
-  const h = histories.get(id);
-  h.selections??=Array(h.values.length).fill(null);
-  if (h.values[h.index] === html) {if(selection)h.selections[h.index]=selection;return;}
-  const merge = kind === 'typing' && h.kind === 'typing' && Date.now() - h.time < 650 && h.index > 0;
-  h.values = h.values.slice(0, h.index + 1);
-  h.selections=h.selections.slice(0,h.index+1);
-  if (merge) {h.values[h.index] = html;h.selections[h.index]=selection;}
-  else { h.values.push(html);h.selections.push(selection);h.index++; }
-  if (h.values.length > 60) { h.values.shift();h.selections.shift();h.index--; }
-  h.time = Date.now(); h.kind = kind;
+  rich.syncSelection();
 }
 function flushTypingHistory(html) {
   clearTimeout(historyTimer);historyTimer=0;
-  if(!typingHistoryPending)return;
-  typingHistoryPending=false;historyRecord('typing',html);
+  typingHistoryPending=false;rich.flush();
 }
 function queueSave() {
   revision++;
@@ -268,42 +228,44 @@ function queueSave() {
   saveTimer = setTimeout(() => saveNow().catch(showError), 250);
 }
 function onEdit(kind = 'typing') {
-  if (!ready || composing) return;
-  normalizeDirection(false);
+  if (!ready || rich.blocked) return;
   updateEmpty();
-  // Capture plain text only at the save boundary, without layout-derived breaks.
-  // Embedded originals can be megabytes. Do not serialize them on every key.
-  // Commands, Undo and Save flush this pending snapshot synchronously.
-  if(kind==='typing'){
-    typingHistoryPending=true;
-    clearTimeout(historyTimer);historyTimer=setTimeout(()=>flushTypingHistory(),140);
-  }else{
-    clearTimeout(historyTimer);historyTimer=0;typingHistoryPending=false;historyRecord(kind);
-  }
+  // Tiptap transactions own undo and selection. Serialize only at save boundaries.
   queueSave();
   app.classList.add('typing');
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => app.classList.remove('typing'), 1800);
 }
 async function flushFinal(holdEditing=false){
+  const previousFocus=document.activeElement;
+  rich.dismissUi();
   editorLockedByHost||=holdEditing;app.inert=pendingEdits.size===0;
   try{
     while(pendingEdits.size)await Promise.all([...pendingEdits]);
     app.inert=true;
     // Capture the DOM even if the last input event/IME revision has not arrived.
     // Recheck after an in-flight save so its earlier snapshot cannot win.
-    do{await saveNow(true);}while(revision>savedRevision||editor.innerHTML!==activeNote().html);
-  }finally{if(!editorLockedByHost)app.inert=false;}
+    do{await saveNow(true);}while(revision>savedRevision||rich.getHTML()!==activeNote().html);
+  }finally{
+    if(!editorLockedByHost){
+      app.inert=false;
+      if(!app.hidden&&previousFocus?.isConnected&&app.contains(previousFocus)&&!document.querySelector('dialog[open]')&&[document.body,previousFocus].includes(document.activeElement)){
+        if(previousFocus===editor)rich.editor.view.focus();else previousFocus.focus({preventScroll:true});
+      }
+    }
+  }
 }
 async function saveNow(forceCapture=false) {
   await window.JotDocumentHeading?.flush();
   await notePreferenceChain;
   clearTimeout(saveTimer);
   if (!ready) return Promise.reject(new Error('یادداشت‌ها هنوز آماده نیستند.'));
+  rich.flush();
+  if(rich.blocked)return saveChain;
   let captured=false;
   if(forceCapture){
-    composing=false;normalizeDirection(false);
-    const html=editor.innerHTML;
+    composing=false;
+    const html=rich.getHTML();
     if(html!==activeNote().html){capture(html);revision++;captured=true;}
   }
   if(revision<=savedRevision)return saveChain;
@@ -332,44 +294,24 @@ function rememberSelection() {
   if (selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode)) {
     bookmark = selection.getRangeAt(0).cloneRange();
     bookmarkDirection={range:bookmark,backward:!selection.isCollapsed&&selection.anchorNode===bookmark.endContainer&&selection.anchorOffset===bookmark.endOffset};
+    rich.syncSelection();pmBookmark=rich.selection();
   }
 }
 function restoreSelection() {
-  editor.focus({ preventScroll: true });
-  const selection = window.getSelection();
-  if (bookmark && editor.contains(bookmark.commonAncestorContainer)) {
-    if(bookmarkDirection?.range===bookmark&&bookmarkDirection.backward)selection.setBaseAndExtent(bookmark.endContainer,bookmark.endOffset,bookmark.startContainer,bookmark.startOffset);
-    else{selection.removeAllRanges(); selection.addRange(bookmark);}
-  } else {
-    const range = document.createRange();
-    range.selectNodeContents(editor); range.collapse(false);
-    selection.removeAllRanges(); selection.addRange(range);
-  }
+  if(!rich.restoreSelection(pmBookmark))rich.editor.commands.focus('end');
 }
 function command(name, value) {
-  flushTypingHistory();
   restoreSelection();
-  rememberHistorySelection();
-  document.execCommand('styleWithCSS', false, true);
-  document.execCommand(name, false, value);
+  rich.command(name,value);
   rememberSelection();
-  onEdit('command');
   refreshToolbar();
 }
 function undo(redo = false) {
   if(!ready||composing||deleting)return;
-  flushTypingHistory();
-  const history = histories.get(model.activeId);
-  if (!history) return;
-  const index = history.index + (redo ? 1 : -1);
-  if (index < 0 || index >= history.values.length) return;
-  history.index = index; history.kind = '';
-  editor.innerHTML = history.values[index];
-  bookmark = null;
-  if(!restoreEditorSelection(history.selections?.[index]))restoreSelection();
-  normalizeDirection();rememberSelection();updateEmpty();capture();queueSave();refreshToolbar();
+  rich.undo(redo);rememberSelection();updateEmpty();refreshToolbar();
 }
 function closePanels() {
+  rich.dismissUi();
   window.JotWritingTools?.hide();
   window.JotEditorMenu?.close();
   closeFormatMenus();
@@ -383,15 +325,14 @@ function selectNote(id) {
   const note = model.notes.find((item) => item.id === id);
   if (!note) return;
   model.activeId = id;
-  editor.innerHTML = sanitizeHtml(note.html);
+  rich.loadNote(id,note.html);
   window.JotDocumentHeading?.render();
-  bookmark = null;
+  bookmark = null;pmBookmark=rich.selection();
   normalizeDirection(); updateEmpty(); closePanels();
   $('writingArea').scrollTop = 0;
   if ($('notesDialog').open) $('notesDialog').close();
   editor.focus({ preventScroll: true });
-  if (!histories.has(id)) histories.set(id, { values: [editor.innerHTML], selections:[editorSelectionState()], index: 0, time: 0, kind: '' });
-  if (ready) queueSave();
+  // Opening/canonicalizing a legacy note is not an edit or a file-dirty change.
 }
 async function newNote() {
   if(!ready)return;
@@ -410,7 +351,7 @@ function restoreTabView(){
   $('writingArea').scrollTop=view.scroll;
 }
 function pruneTabHistories(){
-  const openIds=new Set(tabHeaders.map(note=>note.id));for(const id of histories.keys())if(id!==model.activeId&&!openIds.has(id)){histories.delete(id);tabUi.delete(id);}
+  const openIds=new Set(tabHeaders.map(note=>note.id));rich.prune([...openIds]);for(const id of tabUi.keys())if(id!==model.activeId&&!openIds.has(id))tabUi.delete(id);
 }
 function renderNoteTabs(){
   if(!workspace)return;
@@ -434,11 +375,11 @@ function installTabContent(data){
   // The native host has flushed the old note and serialized tab operations.
   // Keep per-note undo histories, but reset save revisions for the new identity.
   clearTimeout(saveTimer);clearTimeout(historyTimer);typingHistoryPending=false;historyTimer=0;
-  ready=false;deleting=false;imageBusy=false;composing=false;bookmark=null;revision=0;savedRevision=0;saveChain=Promise.resolve();
+  ready=false;deleting=false;imageBusy=false;composing=false;bookmark=null;pmBookmark=null;revision=0;savedRevision=0;saveChain=Promise.resolve();
   if($('deleteDialog').open)$('deleteDialog').close();$('deleteConfirm').disabled=$('deleteCancel').disabled=false;$('deleteConfirm').ariaBusy='false';$('deleteConfirm').textContent='Move to Trash';
   model.notes=[data.note];model.activeId=data.note.id;confirmedNoteView={...data.note.view};
   appPreferences={...JotDesign.defaults,...data.prefs};model.prefs={...appPreferences};tabHeaders=data.tabs;tabbed=data.tabbed;
-  selectNote(data.note.id);applyPrefs();ready=true;editor.contentEditable='true';resumeEditing();$('error').hidden=true;JotToast.dismiss('note-error');
+  selectNote(data.note.id);applyPrefs();ready=true;rich.setEditable(true);resumeEditing();$('error').hidden=true;JotToast.dismiss('note-error');
   restoreTabView();if(!window.JotWorkspace){renderNoteTabs();JotBridge.send('tab-ready',data.intent);}
 }
 function noteName(note) {
@@ -539,12 +480,7 @@ function setPreference(patch) {
   return notePreferenceChain;
 }
 function refreshToolbar() {
-  document.querySelectorAll('[data-command][aria-pressed]').forEach((button) => button.setAttribute('aria-pressed', String(document.queryCommandState(button.dataset.command))));
-  const selection=getSelection();
-  if(selection.rangeCount&&editor.contains(selection.anchorNode)&&editor.contains(selection.focusNode)){
-    const color=document.queryCommandValue('foreColor');
-    if(color&&CSS.supports('color',color))$('colorMenuButton').style.setProperty('--selected-text-color',color);
-  }
+  // editorcn observes ProseMirror state for all visible formatting controls.
   refreshDirectionControls();
   refreshAlignmentControls();
 }
@@ -572,9 +508,7 @@ function refreshDirectionControls(){
 }
 function setParagraphDirection(direction){
   if(!['auto','ltr','rtl'].includes(direction)||composing)return;
-  flushTypingHistory();restoreSelection();const blocks=selectedDirectionBlocks();if(!blocks.length)return;rememberHistorySelection();
-  for(const block of blocks){if(direction==='auto')delete block.dataset.jotDirection;else block.dataset.jotDirection=direction;}
-  normalizeDirection();rememberSelection();onEdit('command');refreshDirectionControls();closePanels();
+  restoreSelection();rich.setDirection(direction);rememberSelection();refreshDirectionControls();closePanels();
 }
 document.querySelectorAll('[data-paragraph-direction]').forEach(button=>{
   button.addEventListener('pointerdown',event=>event.preventDefault());button.onclick=()=>setParagraphDirection(button.dataset.paragraphDirection);
@@ -602,12 +536,7 @@ function refreshAlignmentControls(){
 }
 function setParagraphAlignment(alignment){
   if(!['auto','left','center','right','justify'].includes(alignment)||!ready||composing||deleting)return;
-  flushTypingHistory();restoreSelection();const blocks=selectedAlignmentBlocks();if(!blocks.length)return;rememberHistorySelection();
-  for(const block of blocks){
-    if(alignment==='auto'){delete block.dataset.jotAlign;block.style.removeProperty('text-align');if(!block.getAttribute('style'))block.removeAttribute('style');}
-    else{block.dataset.jotAlign=alignment;block.style.textAlign=alignment;}
-  }
-  rememberSelection();onEdit('command');refreshAlignmentControls();closePanels();
+  restoreSelection();rich.setAlignment(alignment);rememberSelection();refreshAlignmentControls();closePanels();
 }
 document.querySelectorAll('[data-paragraph-alignment]').forEach(button=>{
   button.addEventListener('pointerdown',event=>event.preventDefault());button.onclick=()=>setParagraphAlignment(button.dataset.paragraphAlignment);
@@ -657,17 +586,16 @@ function insertImages(...args){return trackEdit(insertImagesCore(...args));}
 async function insertImagesCore(files,isCurrent=()=>true) {
   if (!files.length || imageBusy) return;
   rememberSelection();
-  const targetId = model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange(),targetBackward=bookmarkDirection?.range===bookmark&&bookmarkDirection.backward;
+  const targetId = model.activeId,targetRevision=revision,targetSelection=editorSelectionState();
   imageBusy = true;
   $('imageButton').disabled = true;
   try {
     const results = [];
     for (const file of files) results.push(await readImage(file));
     if (model.activeId !== targetId||revision!==targetRevision||composing||deleting||!isCurrent()) throw new Error('یادداشت تغییر کرد. تصویر را دوباره بچسبانید.');
-    const size = results.reduce((sum, src) => sum + src.length, 0) + editor.innerHTML.length;
+    const size = results.reduce((sum, src) => sum + src.length, 0) + rich.getHTML().length;
     if (size > 24 * 1024 * 1024) throw new Error('حجم این یادداشت زیاد است؛ تصویر را در یادداشت جدید قرار دهید.');
-    bookmark=targetSelection;
-    if(bookmark)bookmarkDirection={range:bookmark,backward:targetBackward};
+    restoreEditorSelection(targetSelection);
     command('insertHTML', results.map((src) => '<img alt="'+JotI18n.text('تصویر')+'" src="' + src + '">').join(' ') + ' ');
   } finally { imageBusy = false; $('imageButton').disabled = false; }
 }
@@ -698,7 +626,7 @@ function pasteWithParagraphAlignment(html,alignment){
 async function pasteCore(event,isCurrent=()=>true) {
   event.preventDefault();
   rememberSelection();
-  const targetId=model.activeId,targetRevision=revision,targetSelection=bookmark?.cloneRange(),targetBackward=bookmarkDirection?.range===bookmark&&bookmarkDirection.backward;
+  const targetId=model.activeId,targetRevision=revision,targetSelection=editorSelectionState();
   const targetAlignment=selectedAlignmentBlocks().map(paragraphAlignment)[0]||'auto';
   const data=event.clipboardData;
   if(!data)return;
@@ -711,8 +639,7 @@ async function pasteCore(event,isCurrent=()=>true) {
   if(containsImages){
     const imported=await importHtml(html,images);
     if(model.activeId!==targetId||revision!==targetRevision||composing||deleting||!isCurrent())throw new Error('یادداشت تغییر کرد؛ دوباره بچسبانید.');
-    bookmark=targetSelection;
-    if(bookmark)bookmarkDirection={range:bookmark,backward:targetBackward};
+    restoreEditorSelection(targetSelection);
     if(imported.html)command('insertHTML',pasteWithParagraphAlignment(imported.html,targetAlignment));
     if(imported.missing){$('error').textContent='Some images could not be imported. Their places are marked in the note.';$('error').hidden=true;JotToast.warning($('error').textContent,{id:'image-import-warning'});}
   }else if(plain)command('insertHTML',pasteWithParagraphAlignment(plainToHtml(plain),targetAlignment));
@@ -723,16 +650,15 @@ async function pasteCore(event,isCurrent=()=>true) {
 }
 function copyPayload(all=false) {
   const container=document.createElement('div');
-  const selection=window.getSelection();
-  if(all)container.innerHTML=editor.innerHTML;
-  else if(selection.rangeCount&&editor.contains(selection.anchorNode)&&editor.contains(selection.focusNode))container.append(selection.getRangeAt(0).cloneContents());
-  const html=sanitizeHtml(container.innerHTML);
+  container.innerHTML=rich.selectedHTML(all);
+  const html=rich.blocked?sanitizeHtml(container.innerHTML):container.innerHTML;
   const text=editorPlainText(container);
   const images=container.querySelectorAll('img');
   return {html,text,...(images.length===1?{image:images[0].src}:{})};
 }
 function cutSelection(isCurrent=()=>true) {
-  if(cutting||!ready||composing||deleting||!editor.isContentEditable||getSelection().isCollapsed)return Promise.resolve(false);
+  if(cutting||!ready||composing||deleting||!editor.isContentEditable)return Promise.resolve(false);
+  rich.syncSelection();if(rich.editor.state.selection.empty)return Promise.resolve(false);
   const selection=editorSelectionState();if(!selection)return Promise.resolve(false);
   const noteId=model.activeId,noteRevision=revision,payload=copyPayload();
   cutting=true;
@@ -752,15 +678,16 @@ function cutSelection(isCurrent=()=>true) {
   trackEdit(operation.catch(()=>false));return operation;
 }
 editor.addEventListener('cut',event=>{
-  event.preventDefault();cutSelection().catch(showError);
-});
+  event.preventDefault();event.stopImmediatePropagation();cutSelection().catch(showError);
+},true);
 editor.addEventListener('copy',event=>{
   const payload=copyPayload();
   event.preventDefault();
+  event.stopImmediatePropagation();
   event.clipboardData.setData('text/html',payload.html);
   event.clipboardData.setData('text/plain',payload.text);
   request('clipboard-write',payload).catch(showError);
-});
+},true);
 $('copyButton').addEventListener('click',()=>{closePanels();request('clipboard-write',copyPayload(true)).catch(showError);});
 editor.addEventListener('click',event=>{
   if(event.target.tagName==='IMG'){event.preventDefault();request('view-image',event.target.src).catch(showError);}
@@ -782,27 +709,22 @@ function loadIcons() {
     $('colors').append(button);
   }
 }
-editor.addEventListener('input', () => {if(!window.JotWritingTools?.mutating&&!window.JotDocumentBlocks?.mutating)onEdit();});
 editor.addEventListener('compositionstart', () => {
-  flushTypingHistory();rememberHistorySelection();const history=histories.get(model.activeId);if(history)history.kind='composition-boundary';
   composing = true;
 });
-editor.addEventListener('compositionend', () => { composing = false; onEdit(); });
-editor.addEventListener('beforeinput', (event) => {
-  if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') { event.preventDefault(); undo(event.inputType === 'historyRedo'); }
-  else if(!composing&&!typingHistoryPending)rememberHistorySelection();
-});
-editor.addEventListener('paste', (event) => paste(event).catch(showError));
-editor.addEventListener('dragover', (event) => event.preventDefault());
+editor.addEventListener('compositionend', () => { composing = false; });
+editor.addEventListener('paste', (event) => {event.stopImmediatePropagation();paste(event).catch(showError);},true);
+editor.addEventListener('dragover', (event) => {if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
 editor.addEventListener('drop', (event) => {
+  if(!event.dataTransfer.files.length)return;
   event.preventDefault();
+  event.stopImmediatePropagation();
   const range = document.caretRangeFromPoint(event.clientX, event.clientY);
   if (range && editor.contains(range.startContainer)) { window.getSelection().removeAllRanges(); window.getSelection().addRange(range); }
   insertImages([...event.dataTransfer.files]).catch(showError);
-});
+},true);
 editor.addEventListener('click', (event) => { if (event.target.closest('a')) event.preventDefault(); });
-$('formatBar').addEventListener('pointerdown', (event) => event.preventDefault());
-document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => {command(button.dataset.command);closeFormatMenus();}));
+legacyControls.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => {command(button.dataset.command);closeFormatMenus();}));
 $('formatButton').addEventListener('pointerdown', (event) => { rememberSelection(); event.preventDefault(); });
 $('formatButton').addEventListener('click',()=>setPreference({toolbarVisible:!keepFormatOpen}));
 document.addEventListener('selectionchange',()=>{
@@ -927,13 +849,13 @@ $('deleteDialog').addEventListener('close',()=>{if(!deleting)editor.focus();});
 $('deleteConfirm').onclick=async()=>{
   if(deleting)return;
   if(imageBusy){$('deleteError').textContent='Wait for the image to finish inserting, then try again.';$('deleteError').hidden=false;return;}
-  deleting=true;editor.contentEditable='false';$('deleteError').hidden=true;
+  deleting=true;rich.setEditable(false);$('deleteError').hidden=true;
   $('deleteConfirm').disabled=$('deleteCancel').disabled=true;
   $('deleteConfirm').setAttribute('aria-busy','true');$('deleteConfirm').textContent='Moving…';
   try{await saveNow();await request('note-delete',model.activeId);}
   catch(error){
     JotBridge.reportError(error,'note-delete');$('deleteError').textContent='The note could not be deleted. Your note is still available. '+JotI18n.text(error.message);$('deleteError').hidden=false;
-    deleting=false;editor.contentEditable='true';$('deleteConfirm').disabled=$('deleteCancel').disabled=false;
+    deleting=false;rich.setEditable(true);$('deleteConfirm').disabled=$('deleteCancel').disabled=false;
     $('deleteConfirm').setAttribute('aria-busy','false');$('deleteConfirm').textContent='Move to Trash';
   }
 };
@@ -942,7 +864,7 @@ $('imageButton').addEventListener('click', () => $('imageInput').click());
 $('imageInput').addEventListener('change', () => { insertImages([...$('imageInput').files]).catch(showError); $('imageInput').value = ''; });
 $('exportButton').addEventListener('click', async () => {
   closePanels();
-  try { await saveNow(); await request('export', { name: noteName(activeNote()), html: sanitizeHtml(editor.innerHTML) }); } catch (error) { showError(error); }
+  try { await saveNow(); await request('export', { name: noteName(activeNote()), html: rich.blocked?sanitizeHtml(rich.getHTML()):rich.getHTML() }); } catch (error) { showError(error); }
 });
 let headerDrag=null;
 function cancelHeaderDrag(){
@@ -976,9 +898,11 @@ document.addEventListener('pointerdown', (event) => {
   if (!event.target.closest('#menu,#menuButton')) setNoteMenuVisible(false);
 });
 document.addEventListener('keydown', (event) => {
+  if(event.defaultPrevented)return;
   if(window.JotWorkspace&&JotWorkspace.view!=='note')return;
   if(document.querySelector('dialog[open]'))return;
   if (event.isComposing) return;
+  if(event.altKey||event.getModifierState?.('AltGraph'))return;
   const ctrl = event.ctrlKey || event.metaKey;
   if (ctrl && editor.contains(document.activeElement) && ['KeyZ','KeyY'].includes(event.code)) { event.preventDefault(); undo(event.shiftKey || event.code === 'KeyY'); }
   else if (ctrl && editor.contains(document.activeElement) && ['KeyB','KeyI','KeyU'].includes(event.code)) { event.preventDefault(); command({KeyB:'bold',KeyI:'italic',KeyU:'underline'}[event.code]); }
@@ -989,7 +913,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 async function boot() {
-  editor.contentEditable='false';loadIcons();
+  rich.setEditable(false);loadIcons();
   await window.JotShortcutBindings?.ready;
   const colorOrder=['crimson','red','orange','amber','yellow','lime','green','emerald','teal','cyan','sky','blue','indigo','violet','purple','fuchsia','pink','rose','neutral'];
   const rank=slug=>{const index=colorOrder.indexOf(slug);return index<0?colorOrder.length:index;};
@@ -1002,7 +926,7 @@ async function boot() {
   }
   if(window.JotWorkspace){
     workspace=true;tabbed=true;app.dataset.workspace='true';app.dataset.activeWindow='true';app.dataset.paintReady='true';
-    noteFullscreen=JotWorkspace.maximized;document.execCommand('defaultParagraphSeparator',false,'p');
+    noteFullscreen=JotWorkspace.maximized;
     return;
   }
   const {context,model:stored}=await request('note-load');
@@ -1013,9 +937,8 @@ async function boot() {
   if(!stored||!stored.notes.some(note=>note.id===context.noteId))throw new Error('یادداشت پیدا نشد.');
   model=stored;appPreferences={...JotDesign.defaults,...stored.prefs};model.prefs={...appPreferences};model.activeId=context.noteId;
   confirmedNoteView={...activeNote().view};
-  selectNote(context.noteId);ready=true;editor.contentEditable='true';
+  selectNote(context.noteId);ready=true;rich.setEditable(true);
   renderNoteTabs();
-  document.execCommand('defaultParagraphSeparator',false,'p');
   applyPrefs();setStatus('saved','ذخیره شد');savedRevision=revision;editor.focus();window.jotReady=true;
   restoreTabView();
   // Resolve the real header color with initial transitions disabled before
@@ -1025,7 +948,7 @@ async function boot() {
   requestAnimationFrame(()=>{app.dataset.paintReady='true';});
 }
 window.JotNoteEditor={show:installTabContent,
-  suspend(){if(ready){rememberTabView();flushTypingHistory();}closePanels();resumeEditing();ready=false;},
+  suspend(){if(ready){rememberTabView();flushTypingHistory();}closePanels();rich.setEditable(false);resumeEditing();ready=false;},
   setHeaders(headers){tabHeaders=headers;pruneTabHistories();},
   openOptions(owner){if(ready){workspaceOptionsOwner=owner;$('menuButton').click();positionNoteMenu();}},
   save:saveNow

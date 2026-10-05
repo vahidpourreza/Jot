@@ -1,5 +1,23 @@
 # Jot workspace verification
 
+## Editorcn / Tiptap migration (2026-10-05, v1.7.0)
+
+Review build: `dist/Jot-dev-editorcn/Jot.exe`. This is an actual editing-engine migration: editorcn 0.3.4 components/slash menus with Tiptap 3.31.4, ProseMirror document/history and React 19.3.0. The bundle and generated full third-party notices are local; there is no runtime CDN/server. The custom `writing-tools.js` / `document-blocks.js` engine scripts and obsolete table CSS were removed (recoverable in Git). Header/tab presentation, Home, Trash, note identities/files and native windows remain Jot-owned.
+
+The new default `--self-test` current-editor regression suite passed **357/357**, with **actual OS exit code 0**, at `test-results/20261005-editorcn-current-suite-02/results.json`. This includes 22 database/file-format compatibility checks; the native editor migration cases in tabs/separate windows; SQLite; Trash; library redesign; and shortcut settings/customization. The published executable separately completed **357/357 assertions** at `test-results/20261005-editorcn-published/results.json`; that invocation outlasted its launcher's 60-second wait, so its OS exit code was not retained (it subsequently exited). Do not infer a captured process-exit result from the assertion report alone.
+
+The final published native editor probe then passed **156/156** with a retained **actual OS exit code 0** (`test-results/20261005-editorcn-published-native/editor-migration-results.json`). Its launcher kept the process handle through shutdown. The published executable is v1.7.0; all copied editor/host assets matched the source by SHA-256.
+
+Coverage includes actual editorcn/ProseMirror mounting; local resource loading; untouched legacy HTML and clean linked-file reload; rich formatting/images/tables and `.jot` preservation; forward/backward/image Cut→Undo selections; failed/stale clipboard safety; plain paste with intentional blank/trailing lines; IME/ZWNJ and AltGr; real double-click word selection; font-size controls; tables/slash/Markdown typing; note-local undo across tabs; Home/Settings portal isolation; autosave; final native flush/hold; failed-flush recovery; long mixed-language content; and narrow/wide, light/dark layouts. The older blanket DOM-snapshot test path is historical implementation-specific coverage, not the default validator for this engine.
+
+Focused format protection also passed **22/22, OS exit 0** (`test-results/20261005-editorcn-format-02/editor-format-results.json`). The schema's independent real-Edge cases are included in the native results. Isolated 1,000-paragraph editor timings were around 1.7 ms median insertion in one local run, not end-to-end typing latency or a Notepad-speed claim.
+
+Library schema 3 is a compatibility marker only: verified pre-upgrade/retry backups precede the marker change, with no body rewrite. New `.jot` writes use version 2, old versions 1–2 remain readable, and content fingerprints retain their legacy encoding so clean old files do not become dirty simply by upgrading. Unknown/unsafe/unsupported rich constructs stay read-only with originals preserved. The prior v1.6 app must not edit upgraded stores; Windows associations were intentionally not changed.
+
+TypeScript checks, source JavaScript syntax, `pnpm audit --prod` (no known vulnerabilities reported), Release build/publish and whitespace checks passed. Generated editor assets match the reviewed source/publish by SHA-256. Full bundled-package notices cover 71 packages. Visual inspection confirmed current popovers, dark/light themes and 320/800-width surfaces, including suppression of the stale bubble behind the table popover. One stale WPF generated-source cache required a clean rebuild; the clean rebuild succeeded without warnings.
+
+Earlier failing runs were retained. Integration fixes addressed upstream source-only packaging/JSX compilation, native clipboard routing, ProseMirror-vs-DOM selection authority, original-HTML restoration after Undo and narrow containers. Fixture fixes used the isolated clipboard bridge rather than OS paste, settled asynchronous focus/scroll before pointer coordinates, and stopped the autosave observer from locking the file during atomic replacement; behavior assertions were not relaxed. No live library, running user window, OS clipboard, file association, tray preference or installer was modified. No commit/push was performed for this migration.
+
 ## Note text sizing, visual tab switching, document blocks and Trash (2026-10-05)
 
 Review build: `dist/Jot-dev-writing-trash/Jot.exe`. The approved window header and tab-bar presentation remain unchanged. No editorcn/React migration or new dependency was required for these features.

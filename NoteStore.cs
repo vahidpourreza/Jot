@@ -8,7 +8,9 @@ namespace Jot;
 
 internal sealed partial class NoteStore
 {
-    private const int ApplicationId=0x4A4F5431, SchemaVersion=2;
+    // Version 3 also marks the editor document contract: older Jot must refuse
+    // this store instead of sanitizing away new rich-text nodes on autosave.
+    private const int ApplicationId=0x4A4F5431, SchemaVersion=3;
     private static readonly ConcurrentDictionary<string,SemaphoreSlim> Gates=new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> NoteColors=new("crimson neutral amber blue cyan emerald fuchsia green indigo lime orange pink purple red rose sky teal violet yellow".Split(' '));
     private readonly SemaphoreSlim gate;
@@ -73,7 +75,8 @@ internal sealed partial class NoteStore
         if(Convert.ToInt64(Scalar(connection,null,"PRAGMA application_id;"))!=ApplicationId)
             throw new InvalidDataException("This is not a Jot database. The file was left untouched.");
         var version=Convert.ToInt64(Scalar(connection,null,"PRAGMA user_version;"));
-        if(version==1){UpgradeNotePreferences(connection);version=SchemaVersion;}
+        if(version==1){UpgradeNotePreferences(connection);version=2;}
+        if(version==2){UpgradeEditorFormat(connection);version=3;}
         if(version!=SchemaVersion)
             throw new InvalidDataException("This database requires a different Jot version. The file was left untouched.");
     }

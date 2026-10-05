@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jot</AssemblyName>
     <RootNamespace>Jot</RootNamespace>
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
     <ApplicationIcon>assets\jot.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(JotOfflinePackage)' == 'true'">
@@ -40,8 +40,7 @@
     <Content Include="writing-settings.css" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="workspace.html;workspace.js;workspace-shell.css;workspace-tab-actions.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="notes-files.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="document-heading.js;writing-tools.js;document-note.css" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="note-text-size.js;document-blocks.js;document-blocks.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="document-heading.js;document-note.css;note-text-size.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="tab-switcher.js;tab-switcher.css" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="assets\emoji\emoji-values.txt" LogicalName="Jot.EmojiValues" />
     <Content Include="notifications.js;notifications.css;shortcut-bindings.js" CopyToOutputDirectory="PreserveNewest" />
@@ -51,6 +50,10 @@
     <Content Include="settings.html;settings.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="tests\renderer-tests.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="tests\bidi-tests.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="assets\**" Exclude="assets\editor\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="assets\editor\editor.js;assets\editor\editor.css;assets\editor\editor-licenses.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="BuildJotEditor" BeforeTargets="PrepareForBuild" Condition="'$(MSBuildProjectName)' == 'Jot' And '$(DesignTimeBuild)' != 'true' And '$(SkipEditorBuild)' != 'true'">
+    <Exec Command="pnpm run build:editor" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 </Project>

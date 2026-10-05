@@ -1,11 +1,11 @@
 # SQLite storage
 
-Jot uses `Microsoft.Data.Sqlite` 10.0.12 and explicitly pins the native bundle `SQLitePCLRaw.bundle_e_sqlite3` 3.0.5 (SQLite 3.53.4 in the verified Windows package). Dependency versions are recorded in `packages.lock.json`. No server, EF Core, network database, or new image pipeline is introduced. The v1.6 development build adds independent note-view settings in schema 2; the prior v1.5 installer used schema 1.
+Jot uses `Microsoft.Data.Sqlite` 10.0.12 and explicitly pins the native bundle `SQLitePCLRaw.bundle_e_sqlite3` 3.0.5 (SQLite 3.53.4 in the verified Windows package). Dependency versions are recorded in `packages.lock.json`. No server, EF Core, network database, or new image pipeline is introduced. Version 1.7 uses schema 3 as an editor-compatibility boundary; its table layout is unchanged from v1.6/schema 2. The prior v1.5 installer used schema 1.
 
 ## Layout and operations
 
 - Normal data root: `%LOCALAPPDATA%\Jot`; test roots are isolated under the selected test-output directory.
-- Main store: `jot.db`, schema version 2, Jot application ID. Separate `notes`, `groups`, `settings`, `app_state`, and `note_preferences` tables. Unrecognized legacy note/settings metadata is retained where supported by the existing model.
+- Main store: `jot.db`, schema version 3, Jot application ID. Separate `notes`, `groups`, `settings`, `app_state`, and `note_preferences` tables. Unrecognized legacy note/settings metadata is retained where supported by the existing model.
 - Each `note_preferences` row belongs to one note (foreign key with delete cascade). New notes store local toolbar visibility and always-on-top pin choices, but omit `fontSize` and `lineHeight` until explicitly changed. Missing typography fields inherit current global `settings`; a null font/line-height patch removes only that override. All existing saved typography stays explicit, even when it equals the former default, until Use default is chosen. Schema-1 upgrades snapshot the prior effective values. Content autosaves never overwrite these settings, titles, groups or colors. Theme remains global. Early development builds' per-note theme values are ignored on read/import and removed on the next note-settings save; no further schema change or rich-content rewrite is required.
 - Images are still embedded in each note's original HTML. Index queries use stored text, metadata and an image-present flag, never the HTML payload. Opening one note reads only that note. Preference and note-color notifications do not load all notes.
 - Each save uses parameterized SQL and a transaction. Content writes cannot overwrite titles, groups or colors from the index. Group changes, deletion and full legacy imports are transactional. Deleted-note recovery JSON is durable before the note is deleted.
@@ -13,6 +13,8 @@ Jot uses `Microsoft.Data.Sqlite` 10.0.12 and explicitly pins the native bundle `
 - WAL journaling, full synchronous durability and foreign keys are enabled. The bundled engine must be at least 3.51.3, excluding SQLite's older WAL-reset corruption bug. The provider dependency and actual runtime version are tested.
 
 ## One-time migration
+
+Before moving a schema-2 database to schema 3, Jot creates and verifies the permanent `jot.db.before-v3.bak`. If an earlier attempt already left a valid backup, it is preserved and a fresh `jot.db.before-v3-current-*.bak` snapshots the current data as well. Only the version marker changes; note HTML, preferences, links and metadata are not rewritten. Bad or obstructed backups prevent the upgrade. Older builds reject schema 3, avoiding lossy saves through their retired editor. See [editorcn migration](editorcn-migration.md) for `.jot` file versions and rollback cautions.
 
 1. If no SQLite store exists, validate the old version-2 `notes.json`, including IDs, duplicate IDs, text fields and timestamps. Do not edit the source or its `.bak` file.
 2. Build a uniquely named staging database under the same data directory. Insert all records transactionally, preserving identifiers, order, active note, content, groups, titles, colors and timestamps. Existing English-only interface/neutral-app preference rules still apply.
