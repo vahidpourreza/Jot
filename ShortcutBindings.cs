@@ -14,8 +14,8 @@ internal static class ShortcutBindings
         new("new-tab","New tab","Notes & navigation","app","Ctrl+KeyT"),
         new("reopen-tab","Reopen closed tab","Tabs","app","Ctrl+Shift+KeyT","Restores the last closed note tab; deleted notes are not reopened."),
         new("close","Close current note or tab","Notes & navigation","app","Ctrl+KeyW","Home stays open. Your note stays in the library."),
-        new("next-tab","Next tab","Notes & navigation","app","Ctrl+Tab"),
-        new("previous-tab","Previous tab","Notes & navigation","app","Ctrl+Shift+Tab"),
+        new("next-tab","Next tab","Notes & navigation","app","Ctrl+Tab","Hold Ctrl to preview recent tabs; release to switch."),
+        new("previous-tab","Previous tab","Notes & navigation","app","Ctrl+Shift+Tab","Cycle backward in the tab chooser."),
         new("home","Home","Notes & navigation","app","Ctrl+Shift+KeyH"),
         new("settings","Settings","Notes & navigation","app","Ctrl+Comma"),
         new("shortcuts","Keyboard shortcuts","Notes & navigation","app","Ctrl+Shift+KeyP"),
@@ -23,6 +23,9 @@ internal static class ShortcutBindings
         new("file-open","Open file","Files","file","Ctrl+KeyO"),
         new("file-save","Save file","Files","file","Ctrl+KeyS","Updates the linked file; library drafts save automatically."),
         new("file-save-as","Save as","Files","file","Ctrl+Shift+KeyS","Choose a name, location, and file type."),
+        new("note-text-larger","Increase note text size","Writing","writing","Ctrl+Equal","Also Ctrl+mouse wheel up. Changes only this note."),
+        new("note-text-smaller","Decrease note text size","Writing","writing","Ctrl+Minus","Also Ctrl+mouse wheel down. Changes only this note."),
+        new("note-text-default","Use default text size","Writing","writing","Ctrl+Digit0","Follow the app's writing default again."),
         new("global-new-note","New note","Windows shortcuts","global","Ctrl+Alt+KeyN"),
         new("global-show-jot","Show Jot","Windows shortcuts","global","Ctrl+Alt+KeyJ")
     ];
@@ -39,6 +42,10 @@ internal static class ShortcutBindings
         // Keep Ctrl+Shift+T where the user put it and leave Reopen unassigned.
         if(prefs["shortcutBindings"] is JsonObject stored&&!stored.ContainsKey("reopen-tab")&&
            stored.Any(pair=>pair.Value is JsonValue value&&value.TryGetValue<string>(out var chord)&&chord=="Ctrl+Shift+KeyT"))stored["reopen-tab"]=null;
+        if(prefs["shortcutBindings"] is JsonObject writingBindings)
+            foreach(var action in Actions.Where(action=>action.Scope=="writing"))
+                if(!writingBindings.ContainsKey(action.Id)&&writingBindings.Any(pair=>pair.Value is JsonValue value&&value.TryGetValue<string>(out var chord)&&chord==action.DefaultChord))
+                    writingBindings[action.Id]=null;
         try{prefs["shortcutBindings"]=ValidateOverrides(JsonSerializer.SerializeToElement(prefs["shortcutBindings"]));}
         catch(InvalidDataException){prefs["shortcutBindings"]=new JsonObject();prefs["globalShortcuts"]=false;}
         if(prefs["globalShortcuts"] is not JsonValue flag||!flag.TryGetValue<bool>(out _))prefs["globalShortcuts"]=false;

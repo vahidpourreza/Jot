@@ -26,14 +26,7 @@ internal sealed partial class NoteStore
         {
             // All recovery copies must reach disk before any DELETE executes.
             // A failed archive or SQL command leaves the entire selection intact.
-            var trash=Path.Combine(Root,"trash");Directory.CreateDirectory(trash);
-            foreach(var note in notes)
-            {
-                var id=note["id"]!.GetValue<string>();
-                var archive=JsonSerializer.SerializeToUtf8Bytes(new{deletedAt=DateTimeOffset.UtcNow,note});
-                using var stream=new FileStream(Path.Combine(trash,$"{id}-{Guid.NewGuid():N}.json"),FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,FileOptions.WriteThrough);
-                stream.Write(archive);stream.Flush(true);
-            }
+            foreach(var note in notes)WriteTrashArchive(note);
         }
         foreach(var note in notes)
         {

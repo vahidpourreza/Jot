@@ -435,7 +435,7 @@ function installTabContent(data){
   // Keep per-note undo histories, but reset save revisions for the new identity.
   clearTimeout(saveTimer);clearTimeout(historyTimer);typingHistoryPending=false;historyTimer=0;
   ready=false;deleting=false;imageBusy=false;composing=false;bookmark=null;revision=0;savedRevision=0;saveChain=Promise.resolve();
-  if($('deleteDialog').open)$('deleteDialog').close();$('deleteConfirm').disabled=$('deleteCancel').disabled=false;$('deleteConfirm').ariaBusy='false';$('deleteConfirm').textContent='Delete note';
+  if($('deleteDialog').open)$('deleteDialog').close();$('deleteConfirm').disabled=$('deleteCancel').disabled=false;$('deleteConfirm').ariaBusy='false';$('deleteConfirm').textContent='Move to Trash';
   model.notes=[data.note];model.activeId=data.note.id;confirmedNoteView={...data.note.view};
   appPreferences={...JotDesign.defaults,...data.prefs};model.prefs={...appPreferences};tabHeaders=data.tabs;tabbed=data.tabbed;
   selectNote(data.note.id);applyPrefs();ready=true;editor.contentEditable='true';resumeEditing();$('error').hidden=true;JotToast.dismiss('note-error');
@@ -782,7 +782,7 @@ function loadIcons() {
     $('colors').append(button);
   }
 }
-editor.addEventListener('input', () => {if(!window.JotWritingTools?.mutating)onEdit();});
+editor.addEventListener('input', () => {if(!window.JotWritingTools?.mutating&&!window.JotDocumentBlocks?.mutating)onEdit();});
 editor.addEventListener('compositionstart', () => {
   flushTypingHistory();rememberHistorySelection();const history=histories.get(model.activeId);if(history)history.kind='composition-boundary';
   composing = true;
@@ -929,12 +929,12 @@ $('deleteConfirm').onclick=async()=>{
   if(imageBusy){$('deleteError').textContent='Wait for the image to finish inserting, then try again.';$('deleteError').hidden=false;return;}
   deleting=true;editor.contentEditable='false';$('deleteError').hidden=true;
   $('deleteConfirm').disabled=$('deleteCancel').disabled=true;
-  $('deleteConfirm').setAttribute('aria-busy','true');$('deleteConfirm').textContent='Deleting…';
+  $('deleteConfirm').setAttribute('aria-busy','true');$('deleteConfirm').textContent='Moving…';
   try{await saveNow();await request('note-delete',model.activeId);}
   catch(error){
     JotBridge.reportError(error,'note-delete');$('deleteError').textContent='The note could not be deleted. Your note is still available. '+JotI18n.text(error.message);$('deleteError').hidden=false;
     deleting=false;editor.contentEditable='true';$('deleteConfirm').disabled=$('deleteCancel').disabled=false;
-    $('deleteConfirm').setAttribute('aria-busy','false');$('deleteConfirm').textContent='Delete note';
+    $('deleteConfirm').setAttribute('aria-busy','false');$('deleteConfirm').textContent='Move to Trash';
   }
 };
 $('imageButton').addEventListener('pointerdown', () => rememberSelection());

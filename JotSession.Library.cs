@@ -8,6 +8,24 @@ internal sealed partial class JotSession
     internal bool UpdatingLibrary=>libraryTasks.Any(task=>!task.IsCompleted);
     internal async Task WaitForLibraryOperations()
     {foreach(var task in libraryTasks.ToArray())try{await task;}catch{}}
+    internal Task<int> UpdateTrash(IEnumerable<string> keys,string action)
+    {
+        if(quitting)throw new InvalidOperationException("Jot is closing.");
+        if(action is not ("restore" or "delete"))throw new InvalidDataException("Choose a valid Trash action.");
+        var selected=NoteStore.TrashKeys(keys);var task=UpdateTrashCore(selected,action);libraryTasks.Add(task);
+        async Task<int> Observe(){try{return await task;}finally{libraryTasks.Remove(task);}}
+        return Observe();
+    }
+    private async Task<int> UpdateTrashCore(string[] keys,string action)
+    {
+        await noteOwnershipGate.WaitAsync();
+        try{return action=="restore"?await Store.RestoreTrash(keys):await Store.DeleteTrash(keys);}
+        finally
+        {
+            noteOwnershipGate.Release();
+            try{await Changed(false);}catch(Exception error){Log.Error("trash-update-notification",error);}
+        }
+    }
     internal Task<int> UpdateLibraryNotes(IEnumerable<string> ids,string action,bool? pinned=null,string? folder=null)
     {
         if(quitting)throw new InvalidOperationException("Jot is closing.");

@@ -149,7 +149,7 @@ window.JotBidi=(()=>{
     return bookmark;
   }
   function wrapLooseContent(root,bookmark){
-    const rootBlocks='p,div,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,table,pre,figure';
+    const rootBlocks='p,div,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,table,pre,figure,hr';
     if(root.children.length&&[...root.childNodes].every(node=>node.nodeType===Node.ELEMENT_NODE&&node.matches(rootBlocks)||node.nodeType===Node.TEXT_NODE&&!node.data.trim()))return bookmark;
     const state=snapshot(root,bookmark);let paragraph=null;
     for(const node of [...root.childNodes]){

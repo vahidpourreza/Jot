@@ -56,7 +56,7 @@ public partial class MainWindow
             await home.ClickControl("[role=tab][data-workspace-id=home]");
             await home.WaitFor("window.JotWorkspace?.view==='home'&&document.getElementById('selectionCount').textContent==='3 selected'");
             await home.ClickControl("#bulkDelete");
-            Check("bulk-delete-confirmation-names-count-and-keeps-external-files",await home.Script("document.getElementById('confirmTitle').textContent==='Delete 3 notes?'&&document.getElementById('confirmDescription').textContent.includes('Saved files stay on disk')")=="true");
+            Check("bulk-delete-confirmation-names-count-and-keeps-external-files",await home.Script("document.getElementById('confirmTitle').textContent==='Move 3 notes to Trash?'&&document.getElementById('confirmDescription').textContent.includes('Saved files stay on disk')")=="true");
             await home.ClickControl("#confirmCancel");Check("cancel-keeps-entire-selection",(await s.Store.LoadIndex())!.Value.GetProperty("notes").GetArrayLength()==3);
 
             await SetStoreTrigger(s.Store,"CREATE TRIGGER fail_bulk_delete BEFORE DELETE ON notes WHEN OLD.id='"+ids[1]+"' BEGIN SELECT RAISE(ABORT,'synthetic bulk delete failure');END;");

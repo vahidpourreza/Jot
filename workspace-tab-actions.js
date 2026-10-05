@@ -35,7 +35,7 @@ window.JotWorkspaceTabActions=(()=>{
         {id:'export',label:'Export',icon:'download',pending:'Exporting…'},
         {separator:true},{id:'close',label:'Close tab',icon:'window-close'},
         {id:'tab-reopen',label:'Reopen closed tab',icon:'undo-2',shortcut:window.JotShortcutBindings?.label('reopen-tab'),disabled:!JotWorkspace.canReopenTab},
-        {id:'delete',label:'Delete note',icon:'trash-2'}
+        {id:'delete',label:'Move to Trash',icon:'trash-2'}
       ],run:action=>run(action,note,owner)});
     }
     function rename(note,owner){

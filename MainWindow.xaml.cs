@@ -363,6 +363,9 @@ public partial class MainWindow : Window
                 case "folder-remove":
                     RequireHome();await store.RemoveFolder(payload.GetString()!);await session.Changed(false);result=true;break;
                 case "library-copy": result=await CopyLibraryNote(payload.GetString()!);break;
+                case "trash-count": RequireHome();result=await store.CountTrash();break;
+                case "trash-load": RequireHome();result=await store.LoadTrash();break;
+                case "trash-update": result=await UpdateTrash(payload);break;
                 case "library-export": await ExportLibraryNote(payload.GetString()!);result=true;break;
                 case "library-delete": RequireHome();await session.DeleteLibraryNote(payload.GetString()!);result=true;break;
                 case "library-pin":

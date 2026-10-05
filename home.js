@@ -11,9 +11,11 @@ let contentRenderScheduled=false,contentRenderPending=false;
 const contentUpdates=new Map();
 let pinnedOnly=false,selectionMode=false,bulkBusy=false;
 const selectedNotes=new Set();
+let trashMode=false,trashItems=[],trashCount=0,trashLoading=false,trashError=null;
+const selectedTrash=new Set();
 const indexViewKey='jot-index-view';
-try{const previous=JSON.parse(sessionStorage.getItem(indexViewKey)||'null');if(previous){selectedId=previous.selectedId??null;folder=previous.folder??null;query=previous.query||'';pinnedOnly=previous.pinnedOnly===true;}}catch{}
-function saveIndexView(){try{sessionStorage.setItem(indexViewKey,JSON.stringify({selectedId,folder,query,pinnedOnly}));}catch{}}
+try{const previous=JSON.parse(sessionStorage.getItem(indexViewKey)||'null');if(previous){selectedId=previous.selectedId??null;folder=previous.folder??null;query=previous.query||'';pinnedOnly=previous.pinnedOnly===true;trashMode=previous.trashMode===true;}}catch{}
+function saveIndexView(){try{sessionStorage.setItem(indexViewKey,JSON.stringify({selectedId,folder,query,pinnedOnly,trashMode}));}catch{}}
 function error(e){
   JotBridge.reportError(e,'home');const alert=document.querySelector('dialog[open] .dialog-error');
   if(alert){alert.textContent=t(e.message);alert.hidden=false;}else{$('homeError').textContent=t(e.message);$('homeError').hidden=true;JotToast.error(t(e.message),{id:'home-error'});}
@@ -51,13 +53,18 @@ function createCard(note){
 }
 function updateSelectedCards(){for(const [id,view] of cardViews){view.card.dataset.selected=String(id===selectedId);view.card.dataset.checked=String(selectedNotes.has(id));view.select.checked=selectedNotes.has(id);view.select.disabled=bulkBusy;view.open.setAttribute('aria-current',String(id===selectedId));}}
 function toggleSelected(id,value=!selectedNotes.has(id)){value?selectedNotes.add(id):selectedNotes.delete(id);updateSelectedCards();renderSelection();}
-function clearSelection(){selectedNotes.clear();updateSelectedCards();renderSelection();}
+function clearSelection(){selectedNotes.clear();selectedTrash.clear();updateSelectedCards();renderSelection();}
 function renderSelection(){
   $('cards').dataset.selecting=String(selectionMode);$('bulkActions').hidden=!selectionMode;$('selectNotes').ariaPressed=String(selectionMode);$('selectNotes').textContent=selectionMode?'Done':'Select';
-  const visible=visibleNotes(),selected=homeData.notes.filter(n=>selectedNotes.has(n.id));
-  $('selectionCount').textContent=selected.length+' selected';$('selectAllNotes').checked=visible.length>0&&visible.every(n=>selectedNotes.has(n.id));$('selectAllNotes').indeterminate=selected.length>0&&!$('selectAllNotes').checked;
+  const visible=trashMode?visibleTrash():visibleNotes(),selected=trashMode?trashItems.filter(n=>selectedTrash.has(n.key)):homeData.notes.filter(n=>selectedNotes.has(n.id));
+  $('selectionCount').textContent=selected.length+' selected';$('selectAllNotes').checked=visible.length>0&&visible.every(n=>trashMode?selectedTrash.has(n.key):selectedNotes.has(n.id));$('selectAllNotes').indeterminate=selected.length>0&&!$('selectAllNotes').checked;
   $('selectAllNotes').disabled=bulkBusy||visible.length===0;$('selectNotes').disabled=bulkBusy;
   for(const id of ['bulkPin','bulkMove','bulkDelete'])$(id).disabled=bulkBusy||selected.length===0;
+  $('bulkPin').hidden=$('bulkMove').hidden=trashMode;$('bulkRestore').hidden=!trashMode;
+  $('bulkRestore').disabled=bulkBusy||!selected.length||selected.some(item=>!item.canRestore);
+  $('bulkDelete').querySelector('span:last-child').textContent=trashMode?'Delete forever':'Delete';
+  $('trashCards').dataset.selecting=String(selectionMode);
+  for(const row of $('trashCards').children){const checkbox=row.querySelector('input');checkbox.checked=selectedTrash.has(row.dataset.trashKey);checkbox.disabled=bulkBusy;row.dataset.checked=String(checkbox.checked);row.querySelectorAll('button').forEach(button=>button.disabled=bulkBusy||button.dataset.action==='restore'&&button.dataset.canRestore==='false');}
   if(!bulkBusy)$('bulkPin').querySelector('span:last-child').textContent=selected.length>0&&selected.every(n=>n.libraryPinned)?'Unpin':'Pin';
 }
 async function bulkAction(action,extra={}){
@@ -65,7 +72,61 @@ async function bulkAction(action,extra={}){
   try{await request('library-bulk',{ids,action,...extra});if(action==='delete')selectedNotes.clear();await refresh();}
   finally{bulkBusy=false;renderSelection();updateSelectedCards();}
 }
+function visibleTrash(){return trashItems.filter(item=>!query||searchText([item.title,item.legacyTitle,item.plain,item.group].join('\n')).includes(searchText(query)));}
+function renderTrash(){
+  const items=visibleTrash(),container=$('trashCards'),visible=new Set(items.map(item=>item.key));
+  for(const key of selectedTrash)if(!visible.has(key))selectedTrash.delete(key);
+  $('trashStatus').hidden=!trashLoading&&!trashError;$('trashStatus').ariaBusy=String(trashLoading);
+  $('trashStatusText').textContent=trashLoading?'Loading Trash…':trashError||'';$('trashRetry').hidden=!trashError;
+  $('homeEmpty').hidden=trashLoading||!!trashError||items.length>0;
+  $('emptyTitle').textContent=query?'No matching deleted notes':'Trash is empty';
+  $('emptyDescription').textContent=query?'Try a different search.':'Deleted notes appear here. You can restore them whenever you need.';
+  $('emptyNew').hidden=true;$('noteCount').textContent=items.length+' '+(items.length===1?'item':'items');
+  container.replaceChildren();
+  if(!trashLoading&&!trashError)for(const item of items){
+    const row=document.createElement('article');row.className='library-trash-item';row.dataset.trashKey=item.key;
+    const select=document.createElement('input');select.type='checkbox';select.className='trash-select';
+    const name=item.title||item.legacyTitle||item.plain?.trim().slice(0,70)||'Untitled note';select.ariaLabel='Select '+name;
+    select.onchange=()=>{selectionMode=true;select.checked?selectedTrash.add(item.key):selectedTrash.delete(item.key);renderSelection();};
+    const icon=document.createElement('span');icon.className='trash-note-icon';icon.ariaHidden='true';icon.append(JotNoteIcons.render(item.icon));
+    const content=document.createElement('div');content.className='trash-item-content';
+    const title=document.createElement('strong');title.dir='auto';displayMixedText(title,name);
+    const preview=document.createElement('p');preview.dir='auto';displayMixedText(preview,item.plain||'Empty note');
+    const meta=document.createElement('small');meta.textContent=item.canRestore?'Deleted '+dateFormatter.format(item.deletedAt)+(item.group?' · '+item.group:''):'Recovery copy unavailable';
+    content.append(title,preview,meta);
+    const actions=document.createElement('div');actions.className='trash-item-actions';
+    const restore=document.createElement('button');restore.type='button';restore.className='library-secondary';restore.dataset.action='restore';restore.dataset.canRestore=String(item.canRestore);restore.ariaLabel='Restore '+name;
+    const restoreLabel=document.createElement('span');restoreLabel.textContent='Restore';restore.append(JotDesign.icon('undo-2'),restoreLabel);
+    restore.onclick=()=>trashAction('restore',[item.key],restore).catch(error);
+    const remove=document.createElement('button');remove.type='button';remove.className='icon-button library-trash-delete';remove.dataset.action='delete';remove.title='Delete forever';remove.ariaLabel='Permanently delete '+name;remove.append(JotDesign.icon('trash-2'));
+    remove.onclick=()=>confirmTrashDelete([item.key]);actions.append(restore,remove);row.append(select,icon,content,actions);
+    row.oncontextmenu=event=>{event.preventDefault();JotMenus.open({x:event.clientX,y:event.clientY,owner:restore,error,items:[
+      {id:'restore',label:'Restore',icon:'undo-2',disabled:!item.canRestore,pending:'Restoring…'},
+      {id:'delete',label:'Delete forever',icon:'trash-2'}],run:action=>action==='restore'?trashAction('restore',[item.key]):confirmTrashDelete([item.key])});};
+    container.append(row);
+  }
+  renderSelection();
+}
+async function trashAction(action,keys,button){
+  if(bulkBusy||!keys.length)return;bulkBusy=true;renderSelection();
+  const label=button?.querySelector('span');if(button)button.ariaBusy='true';if(label)label.textContent='Restoring…';
+  try{
+    const count=await request('trash-update',{action,keys,confirmed:action==='delete'});selectedTrash.clear();
+    JotToast.success(action==='restore'?(count===1?'Note restored':'Notes restored'):(count===1?'Item permanently deleted':'Items permanently deleted'),{id:'trash-result'});
+  }finally{
+    try{await refresh();}finally{bulkBusy=false;if(button)button.ariaBusy='false';if(label)label.textContent='Restore';renderSelection();}
+  }
+}
+function confirmTrashDelete(keys){
+  if(bulkBusy||!keys.length)return;
+  confirm('Delete forever?',keys.length===1?'This recovery copy will be permanently removed. This cannot be undone. Saved files are not affected.':keys.length+' recovery copies will be permanently removed. This cannot be undone. Saved files are not affected.',
+    keys.length===1?'Delete forever':'Delete '+keys.length+' forever',()=>trashAction('delete',keys));
+}
 function renderCards(){
+  $('cards').hidden=trashMode;$('trashCards').hidden=!trashMode;$('trashHelp').hidden=!trashMode;
+  $('gridView').parentElement.hidden=trashMode;$('homeSearch').placeholder=trashMode?'Search Trash':'Search notes';
+  if(trashMode){renderTrash();return;}
+  $('trashStatus').hidden=true;
   const notes=visibleNotes(),container=$('cards'),focus=document.activeElement;
   container.dataset.view=viewMode;
   const allIds=new Set(homeData.notes.map(n=>n.id)),visibleIds=new Set(notes.map(n=>n.id));
@@ -101,20 +162,20 @@ function renderCards(){
 }
 function renderFolders(){
   if(folder!==null&&folder!==''&&!homeData.folders.includes(folder))folder=null;
-  displayMixedText($('folderLabel'),pinnedOnly?'Pinned':folder===null?'All notes':folder||'Unfiled');
+  displayMixedText($('folderLabel'),trashMode?'Trash':pinnedOnly?'Pinned':folder===null?'All notes':folder||'Unfiled');
   for(const target of [$('folderChoices'),$('sidebarChoices')]){
   target.replaceChildren();
-  for(const entry of [{name:null,label:'All notes',icon:'notepad-text'},{name:null,pinned:true,label:'Pinned',icon:'pin'},{name:'',label:'Unfiled',icon:'notepad-text'},...homeData.folders.map(name=>({name,label:name,icon:'folder'}))]){
+  for(const entry of [{name:null,label:'All notes',icon:'notepad-text'},{name:null,pinned:true,label:'Pinned',icon:'pin'},{name:null,trash:true,label:'Trash',icon:'trash-2'},{name:'',label:'Unfiled',icon:'notepad-text'},...homeData.folders.map(name=>({name,label:name,icon:'folder'}))]){
     const {name}=entry;
     if(name===''){
       const heading=document.createElement('div');heading.className='library-folders-heading';heading.textContent='Folders';
       const add=document.createElement('button');add.className='icon-button';add.type='button';add.title=add.ariaLabel='New folder';add.append(JotDesign.icon('plus'));add.onclick=newFolder;if(target.id==='sidebarChoices')heading.append(add);target.append(heading);
     }
     const button=document.createElement('button');button.className='library-folder-choice';button.type='button';button.ariaPressed=String(name===folder);
-    button.ariaPressed=String(!!entry.pinned===pinnedOnly&&(entry.pinned||name===folder));button.dataset.folder=name??'';button.dataset.scope=entry.pinned?'pinned':name===null?'all':name===''?'unfiled':'folder';
+    button.ariaPressed=String(entry.trash?trashMode:!trashMode&&!!entry.pinned===pinnedOnly&&(entry.pinned||name===folder));button.dataset.folder=name??'';button.dataset.scope=entry.trash?'trash':entry.pinned?'pinned':name===null?'all':name===''?'unfiled':'folder';
     const label=document.createElement('span');label.dir='auto';displayMixedText(label,entry.label);
-    const count=document.createElement('small');count.textContent=homeData.notes.filter(n=>entry.pinned?n.libraryPinned:name===null||n.group===name).length;button.append(JotDesign.icon(entry.icon),label,count);
-    button.onclick=()=>{if(bulkBusy)return;folder=name;pinnedOnly=!!entry.pinned;clearSelection();closeFolders();saveIndexView();renderFolders();renderCards();};
+    const count=document.createElement('small');count.textContent=entry.trash?(trashCount??'—'):homeData.notes.filter(n=>entry.pinned?n.libraryPinned:name===null||n.group===name).length;if(entry.trash&&trashCount===null)count.title='Trash is unavailable';button.append(JotDesign.icon(entry.icon),label,count);
+    button.onclick=()=>{if(bulkBusy)return;folder=name;pinnedOnly=!!entry.pinned;trashMode=!!entry.trash;clearSelection();closeFolders();saveIndexView();renderFolders();renderCards();if(trashMode)refresh().catch(error);};
     if(name)button.oncontextmenu=e=>{e.preventDefault();openFolderMenu(name,e.clientX,e.clientY,button);};
     if(name)button.onkeydown=e=>{if(e.key==='ContextMenu'||e.shiftKey&&e.key==='F10'){e.preventDefault();const r=button.getBoundingClientRect();openFolderMenu(name,r.left,r.bottom,button);}};
     target.append(button);
@@ -123,7 +184,13 @@ function renderFolders(){
 }
 async function refresh(initialData){
   indexDirty=false;if(!initialData)contentUpdates.clear();
-  const version=++refreshVersion,data=initialData??await request('index-load');if(version!==refreshVersion)return;
+  const version=++refreshVersion,loadingTrash=trashMode;
+  if(loadingTrash){trashLoading=true;trashError=null;renderCards();}
+  let data,trash;
+  try{[data,trash]=await Promise.all([initialData??request('index-load'),loadingTrash?request('trash-load').then(items=>({items}),failure=>({error:failure.message})):request('trash-count').catch(()=>null)]);}
+  catch(e){if(version===refreshVersion&&loadingTrash){trashLoading=false;trashError=e.message;renderCards();}throw e;}
+  if(version!==refreshVersion)return;
+  if(loadingTrash){trashItems=trash.items||[];trashLoading=false;trashError=trash.error||null;trashCount=trash.items?.length??null;}else trashCount=trash;
   if(data)homeData=data;homeData.folders??=[];
   for(let i=0;i<homeData.notes.length;i++){
     const current=homeData.notes[i],updated=contentUpdates.get(current.id);
@@ -158,7 +225,7 @@ function showMetadata(title,label,value,max,placeholder){closeFolders();$('metad
 function newFolder(){metadataMode='folder-new';editingId=null;showMetadata('New folder','Name','',64,'Folder name');}
 function renameFolder(name){metadataMode='folder-rename';editingId=name;showMetadata('Rename folder','Name',name,64,'Folder name');}
 function confirm(title,description,label,action){closeFolders();$('confirmTitle').textContent=title;$('confirmDescription').textContent=description;$('confirmApply').textContent=label;confirmAction=action;dialogReady('libraryConfirm');$('confirmCancel').focus();}
-function deleteNote(note){confirm('Delete note?','This note will be removed from your library. A recovery copy is kept locally.','Delete',()=>request('library-delete',note.id));}
+function deleteNote(note){confirm('Move note to Trash?','You can restore this note from Trash. Saved files stay on disk.','Move to Trash',()=>request('library-delete',note.id));}
 function removeFolder(name){confirm('Remove folder?','The notes will be kept in Unfiled. Only the folder is removed.','Remove folder',async()=>{await request('folder-remove',name);if(folder===name)folder=null;});}
 function moveNote(note){moveNotes([note]);}
 function moveNotes(notes){
@@ -178,7 +245,7 @@ function openNoteMenu(note,x,y,owner){
     {separator:true},{id:'pin-library',label:note.libraryPinned?'Unpin':'Pin to top',icon:'pin',pending:'Updating…'},{id:'select-note',label:'Select',icon:'check'},
     {id:'rename',label:'Rename',icon:'pencil'},{id:'note-icon',label:'Note emoji',icon:'notepad-text'},{id:'move',label:'Move to folder',icon:'folder'},
     {separator:true},{id:'copy',label:'Copy',icon:'copy',pending:'Copying…'},{id:'export',label:'Export',icon:'download',pending:'Exporting…'},
-    {separator:true},{id:'delete',label:'Delete',icon:'trash-2'}
+    {separator:true},{id:'delete',label:'Move to Trash',icon:'trash-2'}
   ],async run(action){
     if(action==='open'||action==='tab')await openNote(note,action==='tab');
     else if(action==='pin-library'){await request('library-pin',{id:note.id,pinned:!note.libraryPinned});await refresh();}
@@ -196,7 +263,7 @@ $('metadataForm').onsubmit=async event=>{
   try{
     const value=$('noteTitleInput').value;
     if(metadataMode==='note')await request('note-metadata',{id:editingId,title:value});
-    else if(metadataMode==='folder-new'){await request('folder-create',value);folder=value.trim();pinnedOnly=false;}
+    else if(metadataMode==='folder-new'){await request('folder-create',value);folder=value.trim();pinnedOnly=false;trashMode=false;}
     else{await request('folder-rename',{name:editingId,replacement:value});if(folder===editingId)folder=value.trim();}
     $('metadataDialog').close();await refresh();saveIndexView();
   }catch(e){error(e);}finally{button.disabled=false;button.ariaBusy='false';button.textContent='Save';$('metadataClose').disabled=false;}
@@ -222,8 +289,10 @@ async function create(){
 for(const id of ['homeNew','emptyNew'])$(id).onclick=create;
 $('folderButton').onclick=()=>{$('folderPanel').hidden?openFolders():closeFolders();};$('newFolder').onclick=newFolder;
 $('closeFolders').onclick=()=>{closeFolders();$('folderButton').focus();};
-$('selectNotes').onclick=()=>{selectionMode=!selectionMode;if(!selectionMode)selectedNotes.clear();updateSelectedCards();renderSelection();};
-$('selectAllNotes').onchange=()=>{for(const note of visibleNotes())$('selectAllNotes').checked?selectedNotes.add(note.id):selectedNotes.delete(note.id);updateSelectedCards();renderSelection();};
+$('selectNotes').onclick=()=>{selectionMode=!selectionMode;if(!selectionMode){selectedNotes.clear();selectedTrash.clear();}updateSelectedCards();renderSelection();};
+$('selectAllNotes').onchange=()=>{if(trashMode){for(const item of visibleTrash())$('selectAllNotes').checked?selectedTrash.add(item.key):selectedTrash.delete(item.key);}else for(const note of visibleNotes())$('selectAllNotes').checked?selectedNotes.add(note.id):selectedNotes.delete(note.id);updateSelectedCards();renderSelection();};
+$('bulkRestore').onclick=()=>trashAction('restore',[...selectedTrash],$('bulkRestore')).catch(error);
+$('trashRetry').onclick=()=>refresh().catch(error);
 $('bulkPin').onclick=async()=>{
   const pinned=!homeData.notes.filter(note=>selectedNotes.has(note.id)).every(note=>note.libraryPinned);
   const button=$('bulkPin');button.ariaBusy='true';button.querySelector('span:last-child').textContent=pinned?'Pinning…':'Unpinning…';
@@ -231,8 +300,9 @@ $('bulkPin').onclick=async()=>{
 };
 $('bulkMove').onclick=()=>moveNotes(homeData.notes.filter(note=>selectedNotes.has(note.id)));
 $('bulkDelete').onclick=()=>{
+  if(trashMode){confirmTrashDelete([...selectedTrash]);return;}
   const count=selectedNotes.size;if(!count)return;
-  confirm('Delete '+count+' '+(count===1?'note?':'notes?'),'The selected notes will be removed from your library. Recovery copies are kept locally. Saved files stay on disk.','Delete '+count,()=>bulkAction('delete'));
+  confirm('Move '+count+' '+(count===1?'note to Trash?':'notes to Trash?'),'You can restore the selected notes from Trash. Saved files stay on disk.','Move to Trash',()=>bulkAction('delete'));
 };
 for(const [id,value] of [['gridView','grid'],['listView','list']])$(id).onclick=async()=>{const previous=viewMode;viewMode=value;renderCards();try{await request('preferences',{libraryView:value});homeData.prefs.libraryView=value;}catch(e){viewMode=previous;renderCards();error(e);}};
 $('homeSearch').value=query;

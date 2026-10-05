@@ -2,7 +2,7 @@
 (()=>{
   const byId=id=>document.getElementById(id),request=JotBridge.request;
   const state={view:'home',tabs:[],settingsOpen:false,canReopenTab:false,activeId:'home',maximized:false,busy:false,modeBusy:false,pending:null,operation:Promise.resolve(),booted:false};
-  let tabActions;
+  let tabActions,tabSwitcher;
   function error(value){JotBridge.reportError(value,'workspace');const target=byId('workspaceError');target.textContent=value?.message||'The action could not be completed.';target.hidden=true;JotToast.error(target.textContent,{id:'workspace-error'});}
   function maximizeState(value){
     state.maximized=!!value;const button=byId('workspaceMaximize');button.ariaPressed=String(state.maximized);
@@ -12,6 +12,7 @@
   function renderTabs(){
     JotWorkspaceTabs.render(byId('workspaceTabs'),{tabs:state.tabs,settingsOpen:state.settingsOpen,canReopenTab:state.canReopenTab,activeId:state.activeId,busy:state.busy||state.modeBusy,
       pendingId:state.pending?.id,pendingAction:state.pending?.action,onAction:runAction,onMenu:tabActions?.open,onRename:tabActions?.rename,onHomeMenu:(owner,x,y)=>window.JotHomeMenu?.open(owner,x,y)});
+    tabSwitcher?.sync();
   }
   async function runAction(action,id){
     if(state.busy||state.modeBusy||action==='tab-switch'&&id===state.activeId)return;
@@ -41,7 +42,7 @@
     if(view!=='note')byId('workspaceTabs').querySelector('[aria-selected=true]')?.focus({preventScroll:true});
     document.body.dataset.view=view;
   }
-  window.JotWorkspace={get view(){return state.view;},get pinned(){return byId('workspacePin').ariaPressed==='true';},get maximized(){return state.maximized;},get tabs(){return state.tabs;},get canReopenTab(){return state.canReopenTab;},renderTabs,
+  window.JotWorkspace={get view(){return state.view;},get pinned(){return byId('workspacePin').ariaPressed==='true';},get maximized(){return state.maximized;},get tabs(){return state.tabs;},get canReopenTab(){return state.canReopenTab;},get tabSwitcher(){return tabSwitcher;},renderTabs,
     setOpeningModeBusy(value){state.modeBusy=!!value;renderTabs();},
     updateTabs(tabs){state.tabs=tabs;renderTabs();},get pending(){return state.operation;},runAction,showView};
   Object.defineProperty(window,'fullscreen',{configurable:true,get:()=>state.maximized});
@@ -75,8 +76,9 @@
     const [layout,context]=await Promise.all([request('workspace-layout'),request('context')]);
     state.view=context.view||'home';state.tabs=context.tabs||[];maximizeState(context.fullscreen);
     importView(layout.home,'workspaceHome');importView(layout.settings,'workspaceSettings');importView(layout.editor,'app');
-    await loadScript('home.js');await loadScript('shortcuts.js');await loadScript('settings.js');await loadScript('renderer.js');await loadScript('editor-menu.js');await loadScript('notes-files.js');await loadScript('document-heading.js');await loadScript('writing-tools.js');await loadScript('app-shortcuts.js');
+    await loadScript('home.js');await loadScript('shortcuts.js');await loadScript('settings.js');await loadScript('renderer.js');await loadScript('editor-menu.js');await loadScript('notes-files.js');await loadScript('document-heading.js');await loadScript('note-text-size.js');await loadScript('document-blocks.js');await loadScript('writing-tools.js');await loadScript('app-shortcuts.js');
     await Promise.all([JotHome.ready,JotSettings.ready,JotNoteEditor.ready,JotShortcutBindings.ready]);
+    tabSwitcher=JotTabSwitcher.create({snapshot:()=>({tabs:state.tabs,settingsOpen:state.settingsOpen,activeId:state.activeId,busy:state.busy||state.modeBusy}),onSwitch:id=>runAction('tab-switch',id)});
     tabActions=JotWorkspaceTabActions.create({request,onAction:runAction,onError:error,
       beforeAction:()=>state.operation.catch(()=>{}),onRename:note=>JotHome.editNote(note),onDelete:note=>JotHome.deleteNote(note),
       async onOptions(note,owner){if(state.activeId!==note.id||state.view!=='note')await runAction('tab-switch',note.id);JotNoteEditor.openOptions(owner);}});

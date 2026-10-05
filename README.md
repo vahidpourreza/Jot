@@ -4,9 +4,9 @@ A personal Windows notes app built with .NET 10. The UI uses the existing design
 
 ## Current build
 
-**Development build: `dist\Jot-dev-combined-tabs\Jot.exe` (v1.6.0, 2026-10-03).** Keep its adjacent files together and quit an older running Jot before opening it. This iteration is development-only: do not build another installer unless the user explicitly requests one. The existing installer below remains v1.5.0 and does not contain these changes.
+**Development build: `dist\Jot-dev-writing-trash\Jot.exe` (v1.6.0, 2026-10-05).** Keep its adjacent files together and quit an older running Jot before opening it. This iteration is development-only: do not build another installer unless the user explicitly requests one. The existing installer below remains v1.5.0 and does not contain these changes.
 
-This iteration adds an editable document heading and emoji, independent note titles and filenames, a complete local emoji catalogue, and top-of-document writing tools with slash commands and selection formatting. Pinned tabs retain readable titles, and dragging uses smooth visual movement without rebuilding the tab strip. Soft tab tints, browser-style reopening, bottom-right notifications and desktop-input protection remain available. See TESTING.md for verification status and remaining limitations; Notepad-level performance is a target, not a claimed result.
+This iteration adds note text-size shortcuts, a visual recent-tab chooser, editable tables and a recoverable Trash area. Existing document headings/emojis, independent note titles and filenames, slash commands, pinned tabs, soft tab colors and native window controls remain available. See TESTING.md for verification status and remaining limitations; Notepad-level performance is a target, not a claimed result.
 
 This development build upgrades SQLite settings storage to schema 2 and keeps `jot.db.before-v2.bak` before upgrading an existing schema-1 database. After using it, continue with v1.6 or newer; v1.5 will refuse the newer database schema instead of overwriting it.
 
@@ -21,6 +21,15 @@ Normal launches restore recorded notes in the selected Open mode, with saved pos
 Closing the last open app window fully quits Jot and removes its tray icon. Home/Settings, notes and image viewers count; minimized windows keep the app running, while hidden tray/cache windows do not. Pending saves/images finish first, and a failed shutdown keeps a recovery window open. Closing standalone notes individually still excludes them from restoration. Image viewers are not reopened. Explicit `--tray` startup remains available for a deliberate background-only launch. The first launch migrates existing JSON notes to SQLite; after switching, do not return to the older JSON-based app.
 
 The raw developer publish bundles .NET but uses the machine's WebView2 installation; the installer above bundles both. The technical OS minimum is Windows 10 build 19041 or later on an x64-compatible system. This app uses WebView2's WPF composition control with anti-aliased clipping, a subtle border, and a soft shadow. It no longer uses a jagged Win32 region for its corners.
+
+## Text size, tab switching, tables and Trash
+
+- **Ctrl + mouse wheel** over a note changes only that note's font size, not the whole window. **Ctrl++ / Ctrl+−** also work; **Ctrl+0** removes the override and follows Settings → Writing defaults. Existing 13–24px limits remain. Rich text, selection and other notes are unchanged. Keyboard bindings can be changed in Settings → Keyboard shortcuts.
+- **Hold Ctrl and press Tab** to preview recently used tabs with their title, emoji and note color. Press Tab again to cycle, use Shift to reverse, then release Ctrl to switch. Escape cancels; Home and open Settings are included. Selecting a preview uses the existing save-before-switch path. Custom shortcuts remain supported; modifierless shortcuts use Enter to confirm.
+- **Table** in the toolbar or `/table` opens a row/column chooser. Place the caret in a table and use that button for row, column and removal actions. Tab / Shift+Tab moves between cells; Tab at the last cell adds a row. Structural edits to imported merged/uneven tables are intentionally restricted. `/divider` and `/inline code` join the existing headings, lists, quotes and code-block tools. These are Markdown-style rich-text tools, not a raw Markdown editor or a new `.md` file format.
+- **Home → Trash** shows deleted notes, including older recovery copies. Search, restore and permanent deletion support multiple selected items. Permanent deletion requires confirmation; nothing expires automatically. Restore preserves note content and preferences but detaches any saved-file link, preventing automatic writes to an external file. Saved files are never deleted by Trash.
+
+Windows, not Jot, controls whether its notification icon stays beside the clock or inside the `^` overflow. Drag Jot's icon out of that overflow, or enable it in Windows taskbar settings. A stable installation path helps Windows retain the choice; moving unsigned development builds may reset its identity. Jot does not modify unsupported tray registry settings or force the icon's visibility. See [Microsoft's notification-area guidance](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area).
 
 ## Home and work windows
 

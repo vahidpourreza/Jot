@@ -195,10 +195,7 @@ internal sealed partial class NoteStore
     public Task Delete(string id)=>Run(connection=>{
         using var tx=connection.BeginTransaction();var note=ReadNote(connection,tx,id)??throw new InvalidDataException("Note not found.");
         // A recovery copy must be durable before the transactional deletion starts.
-        var trash=Path.Combine(Root,"trash");Directory.CreateDirectory(trash);
-        var archive=JsonSerializer.SerializeToUtf8Bytes(new{deletedAt=DateTimeOffset.UtcNow,note});
-        using(var stream=new FileStream(Path.Combine(trash,$"{id}-{Guid.NewGuid():N}.json"),FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,FileOptions.WriteThrough))
-        {stream.Write(archive);stream.Flush(true);}
+        WriteTrashArchive(note);
         Execute(connection,tx,"DELETE FROM notes WHERE id=$id;",("$id",id));
         Execute(connection,tx,"UPDATE app_state SET active_id=(SELECT id FROM notes ORDER BY position,id LIMIT 1) WHERE singleton=1 AND active_id=$id;",("$id",id));
         tx.Commit();return true;

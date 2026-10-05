@@ -80,5 +80,6 @@ public partial class MainWindow
         // synthesizing desktop input or touching another app's keyboard focus.
         foreach(var type in new[]{"rawKeyDown","keyUp"})
             await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",JsonSerializer.Serialize(new{type,key,code,windowsVirtualKeyCode=virtualKey,modifiers=shift?10:2}));
+        await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",JsonSerializer.Serialize(new{type="keyUp",key="Control",code="ControlLeft",windowsVirtualKeyCode=17,modifiers=0}));
     }
 }

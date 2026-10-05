@@ -11,6 +11,9 @@ window.JotWritingTools=(()=>{
     {id:'numbered-list',label:'Numbered list',description:'A numbered sequence',icon:'list-ordered',terms:'ordered numbers',command:'insertOrderedList'},
     {id:'quote',label:'Quote',description:'A block quote',icon:'text-select',terms:'blockquote',command:'formatBlock',value:'blockquote'},
     {id:'code',label:'Code block',description:'Monospaced text',icon:'code-xml',terms:'pre snippet',command:'formatBlock',value:'pre'},
+    {id:'inline-code',label:'Inline code',description:'Format a word or short snippet',icon:'code-xml',terms:'monospace backtick markdown',documentAction:'inlineCode'},
+    {id:'divider',label:'Divider',description:'A horizontal section separator',icon:'minus',terms:'rule line separator markdown',documentAction:'insertDivider'},
+    {id:'table',label:'Table',description:'Choose rows and columns',icon:'table',terms:'grid cells rows columns markdown',table:true},
     ...['auto','left','center','right','justify'].map(value=>({id:'align-'+value,label:value==='auto'?'Auto alignment':value==='justify'?'Justify':'Align '+value,description:'Selected or current paragraphs',icon:value==='auto'?'type':'align-'+value,terms:'alignment '+value,alignment:value})),
     ...['bold','italic','underline','strikeThrough'].map(value=>({id:value,label:({bold:'Bold',italic:'Italic',underline:'Underline',strikeThrough:'Strikethrough'})[value],description:'Format the selected text',icon:value==='strikeThrough'?'strikethrough':value,terms:'format',command:value})),
     {id:'image',label:'Image',description:'Choose an image from your computer',icon:'image-plus',terms:'picture photo',image:true}
@@ -21,7 +24,7 @@ window.JotWritingTools=(()=>{
   const choices=document.createElement('div');choices.className='writing-command-choices';menu.append(menuHeading,choices);document.body.append(menu);
   const bubble=document.createElement('div');bubble.id='selectionTools';bubble.className='selection-tools surface';bubble.role='toolbar';bubble.ariaLabel='Selection formatting';bubble.hidden=true;document.body.append(bubble);
   function button(id,label,icon){const b=document.createElement('button');b.type='button';b.className='icon-button';b.dataset.writingAction=id;b.title=b.ariaLabel=label;b.append(JotDesign.icon(icon));return b;}
-  for(const item of commands.filter(item=>['bold','italic','underline','strikeThrough','align-left','align-center','align-right','align-justify'].includes(item.id))){const b=button(item.id,item.label,item.icon);b.onclick=()=>run(item);bubble.append(b);}
+  for(const item of commands.filter(item=>['bold','italic','underline','strikeThrough','inline-code','align-left','align-center','align-right','align-justify'].includes(item.id))){const b=button(item.id,item.label,item.icon);b.onclick=()=>run(item);bubble.append(b);}
   bubble.addEventListener('pointerdown',event=>{rememberSelection();event.preventDefault();});
   const block=document.createElement('button');block.id='blockStyleButton';block.type='button';block.className='writing-block-style';block.title=block.ariaLabel='Paragraph style and commands';block.textContent='Text';bar.prepend(block);
   const alignment=button('alignment','Paragraph alignment','align-left');alignment.id='writingAlignment';bar.append(alignment);
@@ -51,7 +54,7 @@ window.JotWritingTools=(()=>{
     const selection=getSelection();if(!selection.isCollapsed||!selection.rangeCount||!editor.contains(selection.anchorNode))return null;
     const range=selection.getRangeAt(0),element=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
     if(element.closest('pre,code'))return null;
-    const parent=element.closest('p,div,li,h1,h2,h3,blockquote');if(!parent||parent===editor||!editor.contains(parent))return null;
+    const parent=element.closest('p,div,li,h1,h2,h3,blockquote,td,th');if(!parent||parent===editor||!editor.contains(parent))return null;
     // Read only a short suffix before the caret, including across formatting
     // spans. Never serialize or walk from the start of a long paragraph on input.
     let visited=0;
@@ -69,7 +72,7 @@ window.JotWritingTools=(()=>{
     for(const piece of pieces){if(start<piece.length){const query=range.cloneRange();query.setStart(piece.node,piece.start+start);return {id:model.activeId,range:query,text:'/'+match[1],query:match[1].toLowerCase(),rect:caretRect(range),kind:'slash'};}start-=piece.length;}
     return null;
   }
-  function options(state){return commands.filter(item=>(state.kind!=='blocks'||['text','heading-1','heading-2','heading-3','bullet-list','numbered-list','quote','code','image'].includes(item.id))&&(state.kind!=='alignment'||item.alignment)&&(!state.query||[item.label,item.terms].join(' ').toLowerCase().includes(state.query)));}
+  function options(state){return commands.filter(item=>(state.kind!=='blocks'||['text','heading-1','heading-2','heading-3','bullet-list','numbered-list','quote','code','inline-code','divider','table','image'].includes(item.id))&&(state.kind!=='alignment'||item.alignment)&&(!item.table||!(getSelection().anchorNode?.parentElement?.closest('table')))&&(!state.query||[item.label,item.terms].join(' ').toLowerCase().includes(state.query)));}
   function renderMenu(state){
     const previous=menuState;menuState=state;if(!previous||previous.query!==state.query||previous.kind!==state.kind)selected=0;
     const items=options(state);selected=Math.max(0,Math.min(selected,items.length-1));choices.replaceChildren();
@@ -88,6 +91,7 @@ window.JotWritingTools=(()=>{
   function run(item){
     if(!available())return;let state=menuState;if(state&&state.id!==model.activeId){hide();return;}
     if(state?.kind==='slash'){state=slashContext();if(!state||!options(state).some(option=>option.id===item.id)){hide();return;}}
+    if(item.table){const context={owner:state?.owner||null,slash:state?.kind==='slash'?state:null,rect:state?.rect};hide();JotDocumentBlocks.openTable(context);return;}
     flushTypingHistory();restoreSelection();rememberHistorySelection();mutating=true;
     try{
       if(state?.kind==='slash'){
@@ -96,6 +100,7 @@ window.JotWritingTools=(()=>{
       }
       close();bubble.hidden=true;
       if(item.alignment)setParagraphAlignment(item.alignment);
+      else if(item.documentAction)JotDocumentBlocks[item.documentAction]();
       else if(item.image){onEdit('command');document.getElementById('imageInput').click();}
       else command(item.command,item.value);
     }finally{mutating=false;}
@@ -110,7 +115,7 @@ window.JotWritingTools=(()=>{
     const range=selection.getRangeAt(0),rect=range.getBoundingClientRect(),viewport=area.getBoundingClientRect();
     if(rect.bottom<viewport.top||rect.top>viewport.bottom){bubble.hidden=true;return;}
     bubble.hidden=false;position(bubble,rect,true);
-    for(const b of bubble.children){const item=commands.find(value=>value.id===b.dataset.writingAction);b.ariaPressed=String(item.command?document.queryCommandState(item.command):selectedAlignmentBlocks().every(node=>paragraphAlignment(node)===item.alignment));}
+    for(const b of bubble.children){const item=commands.find(value=>value.id===b.dataset.writingAction);b.ariaPressed=String(item.command?document.queryCommandState(item.command):item.id==='inline-code'?JotDocumentBlocks.isInlineCode():selectedAlignmentBlocks().every(node=>paragraphAlignment(node)===item.alignment));}
   }
   function schedule(){if(!frame)frame=requestAnimationFrame(refresh);}
   editor.addEventListener('input',()=>{if(!mutating)schedule();});

@@ -348,5 +348,5 @@ window.JotWorkspaceTabs=(()=>{
     }
     state.initialized=true;
   }
-  return {render,title};
+  return {render,title,dismissPicker(root){const state=roots.get(root);if(state)closePicker(state);}};
 })();

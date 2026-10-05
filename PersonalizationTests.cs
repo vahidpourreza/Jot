@@ -33,7 +33,7 @@ public partial class MainWindow
 
         // A changed draft (including its original embedded image) must be in recovery.
         var image=JsonSerializer.Deserialize<string>(await a.Script("editor.querySelector('img').src"))!;
-        var pending=await c.Script("editor.innerHTML='<p>Latest unsaved delete draft</p><img src=\"'+"+JsonSerializer.Serialize(image)+"+'\">';onEdit();clearTimeout(saveTimer);document.getElementById('deleteButton').click();document.getElementById('deleteConfirm').click();document.getElementById('deleteConfirm').getAttribute('aria-busy')==='true'&&!editor.isContentEditable&&document.getElementById('deleteConfirm').textContent==='Deleting…'");
+        var pending=await c.Script("editor.innerHTML='<p>Latest unsaved delete draft</p><img src=\"'+"+JsonSerializer.Serialize(image)+"+'\">';onEdit();clearTimeout(saveTimer);document.getElementById('deleteButton').click();document.getElementById('deleteConfirm').click();document.getElementById('deleteConfirm').getAttribute('aria-busy')==='true'&&!editor.isContentEditable&&document.getElementById('deleteConfirm').textContent==='Moving…'");
         checks.Add(new{name="delete-shows-disabled-pending-state",passed=pending=="true"});
         for(int i=0;i<200&&session.Windows.Contains(c);i++)await Task.Delay(40);
         checks.Add(new{name="delete-removes-only-selected-note-and-closes-its-window",passed=!session.Windows.Contains(c)&&session.Windows.Contains(a)&&session.Windows.Contains(b)&&!(await store.Load())!.Value.GetProperty("notes").EnumerateArray().Any(n=>n.GetProperty("id").GetString()==c.NoteId)});

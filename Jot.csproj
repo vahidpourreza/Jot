@@ -41,6 +41,8 @@
     <Content Include="workspace.html;workspace.js;workspace-shell.css;workspace-tab-actions.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="notes-files.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="document-heading.js;writing-tools.js;document-note.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="note-text-size.js;document-blocks.js;document-blocks.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="tab-switcher.js;tab-switcher.css" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="assets\emoji\emoji-values.txt" LogicalName="Jot.EmojiValues" />
     <Content Include="notifications.js;notifications.css;shortcut-bindings.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="browser-tabs.css;tab-colors.css" CopyToOutputDirectory="PreserveNewest" />

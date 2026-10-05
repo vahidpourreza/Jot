@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="workspace-editor.css">
   <link rel="stylesheet" href="writing-settings.css">
   <link rel="stylesheet" href="document-note.css">
+  <link rel="stylesheet" href="document-blocks.css">
 </head>
 <body>
   <main id="app" class="app" aria-label="Jot">
@@ -65,14 +66,14 @@
         <button id="exportButton" class="menu-item" title="Save this note as an HTML file"><span data-icon="download"></span><span>Export</span></button>
         <button id="copyButton" class="menu-item" title="Copy all text, formatting, and images"><span data-icon="copy"></span><span>Copy</span></button>
         <div class="menu-separator" role="separator"></div>
-        <button id="deleteButton" class="menu-item delete-option" title="Delete this note"><span data-icon="trash-2"></span><span>Delete</span></button>
+        <button id="deleteButton" class="menu-item delete-option" title="Move this note to Trash"><span data-icon="trash-2"></span><span>Move to Trash</span></button>
       </div>
     </section>
     <dialog id="deleteDialog" class="delete-dialog surface" aria-labelledby="deleteHeading" aria-describedby="deleteDescription">
-      <h2 id="deleteHeading">Delete this note?</h2>
-      <p id="deleteDescription">This closes the note and removes it from your list. A recovery copy is kept on this device.</p>
+      <h2 id="deleteHeading">Move this note to Trash?</h2>
+      <p id="deleteDescription">This closes the note and moves it to Trash in Home. You can restore it later. Saved files stay on disk.</p>
       <p id="deleteError" role="alert" hidden></p>
-      <div class="dialog-actions"><button id="deleteCancel" class="secondary-button" autofocus>Cancel</button><button id="deleteConfirm" class="primary-button" aria-busy="false">Delete note</button></div>
+      <div class="dialog-actions"><button id="deleteCancel" class="secondary-button" autofocus>Cancel</button><button id="deleteConfirm" class="primary-button" aria-busy="false">Move to Trash</button></div>
     </dialog>
     <dialog id="notesDialog" class="notes-dialog surface" aria-labelledby="notesHeading" dir="ltr">
       <div class="dialog-header"><h2 id="notesHeading">Notes</h2><button id="closeNotesButton" class="icon-button" data-icon="x" aria-label="Close"></button></div>
@@ -83,6 +84,6 @@
     <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     <div id="error" class="error" role="alert" hidden></div>
   </main>
-  <script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="notifications.js"></script><script src="shortcut-bindings.js"></script><script src="context-menus.js"></script><script src="bidi.js"></script><script src="assets/emoji/emoji-data.js"></script><script src="note-personalization.js"></script><script src="workspace-tabs.js"></script><script src="renderer.js"></script><script src="editor-menu.js"></script><script src="notes-files.js"></script><script src="document-heading.js"></script><script src="writing-tools.js"></script><script src="app-shortcuts.js"></script>
+  <script src="design-tokens.js"></script><script src="i18n.js"></script><script src="shared.js"></script><script src="notifications.js"></script><script src="shortcut-bindings.js"></script><script src="context-menus.js"></script><script src="bidi.js"></script><script src="assets/emoji/emoji-data.js"></script><script src="note-personalization.js"></script><script src="workspace-tabs.js"></script><script src="renderer.js"></script><script src="editor-menu.js"></script><script src="notes-files.js"></script><script src="document-heading.js"></script><script src="note-text-size.js"></script><script src="document-blocks.js"></script><script src="writing-tools.js"></script><script src="app-shortcuts.js"></script>
 </body>
 </html>

@@ -7,6 +7,13 @@ public partial class MainWindow
 {
     internal string? TestExportHtml;
     private void RequireHome(){if(Mode!="home")throw new InvalidOperationException("This action is available from Home.");}
+    private Task<int> UpdateTrash(JsonElement payload)
+    {
+        RequireHome();var action=payload.GetProperty("action").GetString()!;
+        if(action=="delete"&&(!payload.TryGetProperty("confirmed",out var confirmed)||confirmed.ValueKind!=JsonValueKind.True))
+            throw new InvalidOperationException("Confirm permanent deletion from Trash first.");
+        return session.UpdateTrash(payload.GetProperty("keys").EnumerateArray().Select(value=>value.GetString()!),action);
+    }
     private async Task<bool> CopyLibraryNote(string id)
     {
         RequireHome();var note=await session.ReadLatestNote(id);var html=note.GetProperty("html").GetString()!;

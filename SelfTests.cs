@@ -160,6 +160,7 @@ public partial class MainWindow
             await VerifyLibraryRedesign(checks);await VerifyPasteSpacing(checks);await VerifyInheritedWriting(checks);await VerifyWorkspaceSession(checks);await VerifyFileMenusAndIcon(checks);
             await VerifyFileWriteRaces(checks);await VerifyLegacyFileState(checks);await VerifyFileStateAutosave(checks);await VerifyFileStatusUi(checks);await VerifyNativeWindowPresentation(checks);await VerifyNotePersonalization(checks);await VerifyShortcutsSettings(checks);
             await VerifyStandardEditing(checks);await VerifyToastDesign(checks);await VerifyCustomShortcuts(checks);
+            await VerifyNoteTextSize(checks);await VerifyTableWriting(checks);await VerifyVisualTabSwitcher(checks);await VerifyTrash(checks);
             await VerifyPerformance(checks,a);
             await MeasureWindowAndImageWork(checks,a);
             checks.Add(new{name="new-note-headers-default-crimson-with-neutral-app-ui",passed=await a.Script("activeNote().color==='crimson'&&model.prefs.accent==='neutral'")=="true"&&await b.Script("activeNote().color==='crimson'")=="true"});

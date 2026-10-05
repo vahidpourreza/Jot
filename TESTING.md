@@ -1,5 +1,25 @@
 # Jot workspace verification
 
+## Note text sizing, visual tab switching, document blocks and Trash (2026-10-05)
+
+Review build: `dist/Jot-dev-writing-trash/Jot.exe`. The approved window header and tab-bar presentation remain unchanged. No editorcn/React migration or new dependency was required for these features.
+
+Focused native/offscreen checks passed with clean process exits:
+
+- Note text sizing: **35/35** (`test-results/20261005-text-size-03/note-text-size-results.json`). Real Ctrl+wheel and keyboard input in tabs/separate windows; note-only persistence, unchanged selection/content/browser scale, default inheritance/reset, limits and configurable keys.
+- Visual tab chooser: **27/27** (`test-results/20261005-visual-tabs-02/visual-tab-switcher-results.json`). Hold/release, MRU, reverse, cancel/selection restoration, Home/Settings/pins, large lists, custom keys, inactive-window focus recovery, failed-save retention and retry.
+- Tables/writing tools: **48/48** (`test-results/20261005-tables-02/table-writing-results.json`). Insert/row/column actions, cell navigation, last-cell row creation, bilingual contents, Undo, `.jot`/reload, merged-table protection and failed-insertion rollback. These are Markdown-style rich-text tools, not `.md` import/export or a raw-source editor.
+- Trash: **30/30** (`test-results/20261005-trash-02/trash-results.json`). Restored rich content/images/metadata/folders/preferences, detached external files, crash-safe restore receipts, collision-safe copies, malformed/legacy archives, path validation, SQL rollback, confirmation, responsive UI and unavailable-Trash isolation.
+- Existing document editing: **69/69** (`test-results/20261005-document-ui-01/document-ui-results.json`); shortcut settings **26/26** (`test-results/20261005-shortcuts-01/feature-results.json`); custom shortcuts **46/46** (`test-results/20261005-custom-shortcuts-01/editing-controls-results.json`); library redesign **34/34** (`test-results/20261005-trash-library-regression-02/library-refresh-results.json`). Coverage overlaps; these are not 315 distinct scenarios.
+
+Source JavaScript syntax and Git whitespace checks passed. Light/dark, narrow/wide chooser/table/Trash captures were visually reviewed. Initial fixture/implementation failures and subsequent passing reports were retained: the standalone font fixture was corrected to use the actual global-preference broadcast, the unreadable Trash timestamp was made a 64-bit value, and the older bulk-delete label assertion now reflects Move to Trash.
+
+The self-contained development publish completed, and the packaged editor/library assets match source by SHA-256. The published executable also passed text sizing **35/35**, tab switching **27/27** and Trash **30/30**, all exit 0 (`test-results/20261005-published-note-text-size`, `20261005-published-visual-tab-switcher`, `20261005-published-trash`). An initial `--package-smoke` invocation was inappropriate for this developer publish: its two offline-installer/private-WebView runtime assertions failed as expected because this build uses the installed WebView2 runtime. Its other six startup/save/reload/isolation checks passed, but that invocation is not reported as a passing suite (`20261005-writing-trash-package/package-smoke.json`). No private runtime or installer was added just to satisfy those installer-only checks.
+
+Trash archives are bounded to 64 MiB serialized size. Oversized live notes are left in the library instead of being deleted; older oversized or damaged archives remain visible as non-restorable and stay on disk until explicit permanent deletion. Restored notes intentionally have no external-file link. No automatic Trash expiration was added.
+
+The full long-running stress suite was not rerun; the previously documented native WebView teardown fault is not claimed fixed. Tests use fresh synthetic data, offscreen windows and isolated WebView profiles. The running user build, normal note store, Windows clipboard/tray settings, file associations and installer were untouched. Nothing was committed or pushed.
+
 ## Committed source and generated-output cleanup (2026-10-03)
 
 Application/source changes were committed locally as `140eefe` on `codex/jot-desktop`; nothing was pushed. The cleanup reduced the repository folder from **10.25 GiB to 1.28 GiB** (about **8.97 GiB net freed**, including the new compressed evidence archive and Git objects).
