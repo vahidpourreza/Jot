@@ -65,7 +65,7 @@ public partial class MainWindow
             Check("recovery-copies-exist-before-any-deletion",Directory.GetFiles(Path.Combine(s.Store.Root,"trash")).Length==3);
             await SetStoreTrigger(s.Store,"DROP TRIGGER fail_bulk_delete;");
 
-            var editorWindow=await s.OpenNoteDefault(ids[0]);await editorWindow.WaitFor("window.jotReady===true");
+            var editorWindow=await s.OpenNoteWindow(ids[0]);await editorWindow.WaitFor("window.jotReady===true");
             await editorWindow.Script("editor.innerHTML='<p>Final draft before bulk delete.</p>';onEdit();clearTimeout(saveTimer)");
             await SetStoreTrigger(s.Store,"CREATE TRIGGER fail_bulk_flush BEFORE UPDATE OF html ON notes BEGIN SELECT RAISE(ABORT,'synthetic bulk flush failure');END;");
             await home.ClickControl("#confirmApply");await home.WaitFor("!document.getElementById('confirmApply').disabled");await editorWindow.WaitFor("!editorLockedByHost&&!app.inert");

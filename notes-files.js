@@ -31,7 +31,11 @@
       const label=document.createElement('span');label.className='file-name';label.dir='auto';
       const status=document.createElement('span');status.className='file-status';status.setAttribute('role','status');
       identity.append(label,status);const heading=document.getElementById('documentHeading');if(heading)heading.append(identity);else document.getElementById('writingArea').before(identity);
-      identity.oncontextmenu=event=>{event.preventDefault();event.stopPropagation();JotHomeMenu.open(identity,event.clientX,event.clientY);};
+      identity.oncontextmenu=event=>{
+        event.preventDefault();event.stopPropagation();const id=currentId();
+        JotMenus.open({x:event.clientX,y:event.clientY,owner:identity,error,
+          items:items(id).filter(item=>item.id!=='file-open'),run:action=>run(action,id)});
+      };
     }
     if(identity){
       identity.hidden=!value.path;
@@ -69,12 +73,16 @@
       return result;
     }finally{busy=false;}
   }
-  window.JotNoteFiles={editorMenuItems:()=>items(currentId()),run,name,filename,state,isDirty,refresh,shortcut,edited:()=>render()};
+  window.JotNoteFiles={editorMenuItems:()=>items(currentId()).filter(item=>item.id!=='file-open'),run,name,filename,state,isDirty,refresh,shortcut,edited:()=>render()};
   window.JotHomeMenu={open(owner,x,y){
     const id=currentId();
     const pin=window.JotWorkspace?[{id:'workspace-pin',label:JotWorkspace.pinned?'Stop keeping on top':'Keep Jot on top',icon:'pin'}]:[];
-    JotMenus.open({x,y,owner,restore:()=>owner.focus({preventScroll:true}),error,items:[...items(id),{separator:true},...pin,{id:'app-settings',label:'Settings',icon:'settings'},{id:'app-shortcuts',label:'Keyboard shortcuts',icon:'keyboard'}],
-      run:action=>action==='app-settings'?JotBridge.request('settings'):action==='app-shortcuts'?JotBridge.request('shortcuts'):action==='workspace-pin'?JotBridge.request('workspace-pin',!JotWorkspace.pinned):run(action,id)});
+    const theme=document.documentElement.dataset.theme||'dark';
+    JotMenus.open({x,y,owner,restore:()=>owner.focus({preventScroll:true}),error,items:[...items(id),{separator:true},
+      {id:'theme-light',label:'Light mode',icon:'sun',disabled:theme==='light',pending:'Applying theme…'},
+      {id:'theme-dark',label:'Dark mode',icon:'moon',disabled:theme==='dark',pending:'Applying theme…'},
+      {separator:true},...pin,{id:'app-settings',label:'Settings',icon:'settings'},{id:'app-shortcuts',label:'Keyboard shortcuts',icon:'keyboard'}],
+      run:action=>action.startsWith('theme-')?(window.JotWorkspace?JotBridge.request('preferences',{theme:action.slice(6)}):JotBridge.request('app-theme',action.slice(6))):action==='app-settings'?JotBridge.request('settings'):action==='app-shortcuts'?JotBridge.request('shortcuts'):action==='workspace-pin'?JotBridge.request('workspace-pin',!JotWorkspace.pinned):run(action,id)});
   }};
   JotBridge.on(data=>{
     if(data.event==='file-state'){

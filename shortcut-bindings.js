@@ -15,7 +15,7 @@ window.JotShortcutBindings=(()=>{
     const action=config.actions.find(action=>action.id===id);if(!action)return 'Unknown keyboard shortcut.';
     if(chord===null)return '';
     const parts=chord.split('+'),key=parts.pop(),ctrl=parts.includes('Ctrl'),alt=parts.includes('Alt'),shift=parts.includes('Shift');
-    if(!config.keys.includes(key)||(!ctrl&&!alt&&!/^F\d+$/.test(key))||(!ctrl&&!alt&&shift))return 'Use Ctrl or Alt with a key, or a function key (F1–F11).';
+    if(!config.keys.includes(key)||(!ctrl&&!alt&&!/^F\d+$/.test(key)))return 'Use Ctrl or Alt with a key, or a function key (F1–F11).';
     if(action.scope!=='global'&&ctrl&&alt)return 'Ctrl+Alt is reserved for AltGr typing in app shortcuts.';
     if(action.scope==='global'&&!ctrl&&!alt)return 'Windows shortcuts need Ctrl or Alt.';
     if(config.reserved.includes(chord)&&chord!==action.defaultChord||key==='Tab'&&!['next-tab','previous-tab'].includes(id))return label(chord)+' is reserved for standard text editing or Windows controls.';

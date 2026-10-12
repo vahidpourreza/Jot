@@ -26,6 +26,9 @@ internal static class ShortcutBindings
         new("note-text-larger","Increase note text size","Writing","writing","Ctrl+Equal","Also Ctrl+mouse wheel up. Changes only this note."),
         new("note-text-smaller","Decrease note text size","Writing","writing","Ctrl+Minus","Also Ctrl+mouse wheel down. Changes only this note."),
         new("note-text-default","Use default text size","Writing","writing","Ctrl+Digit0","Follow the app's writing default again."),
+        new("find-note","Find in note","Writing","writing","Ctrl+KeyF","Find text in the current note; Home searches the library."),
+        new("find-next","Next match","Writing","writing","F3"),
+        new("find-previous","Previous match","Writing","writing","Shift+F3"),
         new("global-new-note","New note","Windows shortcuts","global","Ctrl+Alt+KeyN"),
         new("global-show-jot","Show Jot","Windows shortcuts","global","Ctrl+Alt+KeyJ")
     ];
@@ -77,7 +80,7 @@ internal static class ShortcutBindings
         var parts=chord.Split('+');var key=parts[^1];var modifiers=parts[..^1];
         var ctrl=modifiers.Contains("Ctrl");var alt=modifiers.Contains("Alt");var shift=modifiers.Contains("Shift");
         var canonical=(ctrl?"Ctrl+":"")+(alt?"Alt+":"")+(shift?"Shift+":"")+key;
-        if(chord!=canonical||!Keys.Contains(key)||(!ctrl&&!alt&&!key.StartsWith('F'))||(!ctrl&&!alt&&shift))
+        if(chord!=canonical||!Keys.Contains(key)||(!ctrl&&!alt&&!key.StartsWith('F')))
             throw new InvalidDataException("Use Ctrl or Alt with a key, or a function key (F1–F11).");
         if(action.Scope!="global"&&ctrl&&alt)throw new InvalidDataException("Ctrl+Alt is reserved for AltGr typing in app shortcuts.");
         if(action.Scope=="global"&&!ctrl&&!alt)throw new InvalidDataException("Windows shortcuts need Ctrl or Alt so ordinary function keys stay available.");

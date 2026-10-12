@@ -41,8 +41,9 @@ public partial class MainWindow
             await note.Script("document.getElementById('noteEmojiSearch').value='woman technologist';document.getElementById('noteEmojiSearch').dispatchEvent(new Event('input'))");
             await note.WaitFor("document.getElementById('noteEmojiResults').children.length===6");
             Check("search-has-all-tone-variants",await note.Script("[...document.getElementById('noteEmojiResults').children].every(button=>button.ariaLabel.startsWith('woman technologist'))")=="true");
-            await note.Script("document.getElementById('noteEmojiTone').value='🏽';document.getElementById('noteEmojiTone').dispatchEvent(new Event('change'))");
-            Check("tone-control-filters-visible-results",await note.Script("document.getElementById('noteEmojiResults').children.length===1&&document.querySelector('#noteEmojiResults button').dataset.noteIcon==='emoji:👩🏽‍💻'")=="true");
+            await note.Script("document.getElementById('noteEmojiSearch').value='woman technologist medium skin';document.getElementById('noteEmojiSearch').dispatchEvent(new Event('input'))");
+            await note.WaitFor("document.querySelector('#noteEmojiResults button')?.dataset.noteIcon==='emoji:👩🏽‍💻'");
+            Check("tone-search-ranks-requested-variant-without-dropdown",await note.Script("!document.getElementById('noteEmojiTone')&&document.querySelector('#noteEmojiResults button').dataset.noteIcon==='emoji:👩🏽‍💻'")=="true");
             await note.ClickControl("#noteEmojiResults button");await note.WaitFor("!document.getElementById('noteIconDialog').open");
             var bodyAfter=(await s.Store.LoadNote(id))!.Value;
             var bodyEvidence=JsonSerializer.Deserialize<JsonElement>(await note.Script("({before:emojiBefore,after:editor.innerHTML,plainBefore:emojiPlainBefore,plainAfter:editorPlainText()})"));
@@ -59,7 +60,7 @@ public partial class MainWindow
             }
             await note.Script("JotNoteIcons.open(activeNote());document.getElementById('noteEmojiSearch').value='not-a-real-emoji-name';document.getElementById('noteEmojiSearch').dispatchEvent(new Event('input'))");
             await note.WaitFor("!document.getElementById('noteEmojiEmpty').hidden");
-            Check("empty-search-and-font-limitation-are-explained",await note.Script("document.getElementById('noteEmojiResults').hidden&&document.getElementById('noteEmojiCount').textContent==='0 results'&&document.querySelector('#noteIconDialog .note-icon-hint').textContent.includes('older Windows')")=="true");
+            Check("empty-search-and-offline-artwork-are-explained",await note.Script("document.getElementById('noteEmojiResults').hidden&&document.getElementById('noteEmojiCount').textContent==='0 results'&&document.querySelector('#noteIconDialog .note-icon-hint').textContent.includes('offline')&&!document.querySelector('#noteIconDialog select,#noteIconDialog form')")=="true");
             await note.Script("window.emojiCancelCount=0;document.getElementById('noteIconDialog').addEventListener('cancel',()=>emojiCancelCount++)");
             await Key("Escape",27);await note.WaitFor("!document.getElementById('noteIconDialog').open");
             Check("escape-closes-picker-with-standard-cancel-event",await note.Script("!document.getElementById('noteIconDialog').open&&emojiCancelCount===1")=="true");

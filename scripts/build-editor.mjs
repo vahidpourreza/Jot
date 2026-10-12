@@ -39,6 +39,14 @@ const result = await build({
           const editableGuard = 'if (!ed.isEditable) {';
           if (!contents.includes(editableGuard)) throw new Error('Review editorcn bubble-menu focus policy after updating.');
           contents = contents.replace(editableGuard, 'if (!ed.isEditable || (!ed.isFocused && !document.activeElement?.closest(".jot-selection-bubble"))) {');
+        } else {
+          // lowlight/common already bundles C#. Expose that supported language
+          // in the upstream code-block picker without changing dependencies.
+          const languages = '  "cpp",';
+          const labels = '  cpp: "C++",';
+          if (!contents.includes(languages) || !contents.includes(labels)) throw new Error('Review editorcn C# language picker after updating.');
+          contents = contents.replace(languages, languages + '\n  "csharp",')
+            .replace(labels, labels + '\n  csharp: "C#",');
         }
         patched.add(args.path);
         return {

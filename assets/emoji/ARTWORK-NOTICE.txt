@@ -1,0 +1,13 @@
+Jot local emoji artwork
+
+Twemoji v17.0.3, copyright Twitter, Inc. and other contributors, licensed CC BY 4.0.
+https://github.com/jdecked/twemoji/tree/b6b55fef1e8636b540a6d016a4729ca8cdf2e60b
+License: TWEMOJI-LICENSE-GRAPHICS.txt
+
+Unicode 18 additions: Noto Emoji, copyright 2013 Google, Inc. All Rights Reserved.
+https://github.com/googlefonts/noto-emoji/tree/e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e/2D/svg
+Licensed Apache 2.0; see NOTO-SVG-NOTICE.txt and APACHE-2.0.txt.
+
+Artworks are unmodified; filenames are normalized to Unicode code points.
+artwork-manifest.json records each source path, commit and checksum.
+No emoji artwork is downloaded at runtime.

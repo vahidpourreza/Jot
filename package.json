@@ -2,7 +2,7 @@
   "name": "jot-desktop-editor",
   "private": true,
   "packageManager": "pnpm@11.10.0",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "scripts": {
     "build:editor": "node scripts/build-editor.mjs",
     "check:editor": "tsc --noEmit -p editor-src/tsconfig.json"

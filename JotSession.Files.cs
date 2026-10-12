@@ -23,7 +23,7 @@ internal sealed partial class JotSession
     internal async Task<MainWindow> OpenAcceptedNoteFile(string id)
     {
         await noteOwnershipGate.WaitAsync();
-        try{return (await Store.LoadPreferences()).GetProperty("newNoteTarget").GetString()=="tab"?await OpenAsTabOwned(id):await OpenNoteWindowOwned(id);}
+        try{return await OpenAsTabOwned(id);}
         finally{noteOwnershipGate.Release();}
     }
 }

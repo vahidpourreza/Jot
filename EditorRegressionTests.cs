@@ -20,6 +20,10 @@ public partial class MainWindow
             await VerifyLibraryRedesign(checks);
             await VerifyShortcutsSettings(checks);
             await VerifyCustomShortcuts(checks);
+            await VerifyMenuWorkflow(checks);
+            await VerifyEditorToolbarWorkflow(checks);
+            await VerifyEmojiUiWorkflow(checks);
+            await VerifyNoteSearch(checks);
             var json=JsonSerializer.Serialize(checks,new JsonSerializerOptions{WriteIndented=true});
             await File.WriteAllTextAsync(Path.Combine(testOutput,"results.json"),json);
             using var report=JsonDocument.Parse(json);

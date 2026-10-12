@@ -1,0 +1,6 @@
+.jot-note-find{display:flex;align-items:center;gap:4px;flex:none;width:100%;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--background);direction:ltr}
+.jot-note-find[hidden]{display:none}.jot-note-find input{min-width:50px;flex:1;width:0;height:29px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--foreground);padding:3px 7px;font-size:12px;outline:none}
+.jot-note-find input:focus{border-color:var(--ring)}.jot-note-find output{flex:none;min-width:44px;max-width:86px;font-size:11px;color:var(--muted-foreground);text-align:center;white-space:nowrap}
+.jot-note-find .icon-button{width:26px;min-width:26px;height:27px;font-size:15px;padding:3px}.jot-note-find .icon-button[aria-pressed=true]{background:var(--muted)}.jot-note-find [aria-label='Match case']{font-size:11px}
+.editor .jot-find-match{background:color-mix(in srgb,#eab308 30%,transparent);border-radius:2px}.editor .jot-find-current{background:color-mix(in srgb,#eab308 58%,transparent);outline:1px solid #c89008}
+@media(max-width:380px){.jot-note-find{padding-inline:5px;gap:2px}.jot-note-find output{min-width:36px}.jot-note-find .icon-button{width:23px;min-width:23px}}

@@ -106,35 +106,32 @@ internal sealed partial class JotSession(bool testing, string output)
     private async Task<MainWindow> CreatePreferredNote(string? folder)
     {
         // Capture Home before the first await so closing it while creation is
-        // pending is respected. Reading the preference remains part of the
-        // accepted openingNotes operation that close/quit already waits for.
+        // pending is respected. The accepted openingNotes operation remains
+        // part of the save/close/quit barrier.
         var workspace=Windows.FirstOrDefault(window=>window.Mode=="home");
         var workspaceWasVisible=workspace?.IsVisible==true;
-        var prefs=await Store.LoadPreferences();
         var id = await Store.Create();
         if(!string.IsNullOrEmpty(folder))await Store.SaveMetadata(JsonSerializer.SerializeToElement(new{id,group=folder}));
         await Changed(preferences: false);
-        if(prefs.GetProperty("newNoteTarget").GetString()=="tab")
-        {
-            if(workspace is not null&&(!Windows.Contains(workspace)||workspaceWasVisible&&(workspace.HideRequested||!workspace.IsVisible)))return OpenNoteCore(id);
-            workspace??=Windows.FirstOrDefault(window=>window.Mode=="home")??new MainWindow(this,"home");
-            // Reveal the workspace without resetting its current page. Its tab
-            // queue saves the active editor before installing this new note.
-            workspace.Reveal();
-            try{await workspace.SwitchNoteTab(id);}
-            catch when(workspace.HideRequested||!workspace.IsVisible||!Windows.Contains(workspace))
-            {return await OpenCreatedNoteAfterWorkspaceClose(workspace,id);}
-            if(workspace.HideRequested||!workspace.IsVisible||!Windows.Contains(workspace))return await OpenCreatedNoteAfterWorkspaceClose(workspace,id);
-            return workspace;
-        }
-        return OpenNoteCore(id);
+        if(workspace is not null&&(!Windows.Contains(workspace)||workspaceWasVisible&&(workspace.HideRequested||!workspace.IsVisible)))
+            throw new IOException("The workspace closed. Your new note was saved in Home.");
+        workspace??=Windows.FirstOrDefault(window=>window.Mode=="home")??new MainWindow(this,"home");
+        // Reveal the workspace without resetting its current page. Its tab
+        // queue saves the active editor before installing this new note.
+        workspace.Reveal();
+        try{await workspace.SwitchNoteTab(id);}
+        catch when(workspace.HideRequested||!workspace.IsVisible||!Windows.Contains(workspace))
+        {return await OpenCreatedNoteAfterWorkspaceClose(workspace,id);}
+        if(workspace.HideRequested||!workspace.IsVisible||!Windows.Contains(workspace))return await OpenCreatedNoteAfterWorkspaceClose(workspace,id);
+        return workspace;
     }
     private async Task<MainWindow> OpenCreatedNoteAfterWorkspaceClose(MainWindow workspace,string id)
     {
         // Close can arrive during the queued switch, after the new tab has
-        // acquired the note. Release that ownership before opening its window.
+        // acquired the note. Respect the close without creating an unrequested
+        // standalone window. The new note remains saved in the library.
         if(Windows.Contains(workspace)&&workspace.ContainsNote(id))await workspace.DetachNoteTab(id);
-        return OpenNoteCore(id);
+        throw new IOException("The workspace closed. Your new note was saved in Home.");
     }
     public MainWindow OpenNote(string id,SavedNoteWindow? layout=null)
     {
@@ -170,11 +167,15 @@ internal sealed partial class JotSession(bool testing, string output)
         var target=Windows.FirstOrDefault(w=>w.Mode=="home")??new MainWindow(this,"home");
         target.Reveal();
         if(owner is not null&&owner!=target)await owner.DetachNoteTab(id);
-        // Home may close while the source finishes saving. Keep that close
-        // and return the saved note to a visible ordinary window instead.
-        if(target.HideRequested||!target.IsVisible||!Windows.Contains(target))return OpenNoteCore(id);
+        // A close while the source saves must not silently opt this note into
+        // standalone mode. Existing detached windows may still be restored.
+        if(target.HideRequested||!target.IsVisible||!Windows.Contains(target))
+        {
+            if(owner is {Mode:"note"}&&!Windows.Any(window=>window.ContainsNote(id)))OpenNoteCore(id);
+            throw new IOException("The workspace closed. Your note is saved in Home.");
+        }
         try{await target.SwitchNoteTab(id);return target;}
-        catch{if(owner is not null&&owner!=target&&!Windows.Any(w=>w.ContainsNote(id)))OpenNoteCore(id);throw;}
+        catch{if(owner is {Mode:"note"}&&owner!=target&&!Windows.Any(w=>w.ContainsNote(id)))OpenNoteCore(id);throw;}
     }
     internal Task<MainWindow> OpenNoteWindow(string id)
     {
@@ -205,7 +206,7 @@ internal sealed partial class JotSession(bool testing, string output)
             {
                 var id=await Store.Create();
                 if(!string.IsNullOrEmpty(folder))await Store.SaveMetadata(JsonSerializer.SerializeToElement(new{id,group=folder}));
-                if(!Windows.Contains(owner)||owner.HideRequested)return OpenNoteCore(id);
+                if(!Windows.Contains(owner)||owner.HideRequested)throw new IOException("The workspace closed. Your new note was saved in Home.");
                 await owner.SwitchNoteTab(id);await Changed(false);return owner;
             }
             finally{noteOwnershipGate.Release();}
@@ -222,20 +223,15 @@ internal sealed partial class JotSession(bool testing, string output)
         var saved=await Store.LoadWindowSession();
         var workspace=await Store.LoadWorkspaceSession();
         if(saved.Length==0&&(workspace is null||workspace.Tabs.Length==0&&!workspace.SettingsOpen)){if(!quitting)await NewNote();return;}
-        var tabs=(await Store.LoadPreferences()).GetProperty("newNoteTarget").GetString()=="tab";
         MainWindow? restoredWorkspace=null;
         if(workspace is not null)
         {
-            if(tabs||workspace.SettingsOpen)
-            {
-                restoredWorkspace=Windows.FirstOrDefault(window=>window.Mode=="home")??new MainWindow(this,"home");
-                await restoredWorkspace.RestoreSavedWorkspace(tabs?workspace:workspace with{Tabs=[],ActiveId=workspace.ActiveId=="settings"?"settings":"home"});
-            }
-            if(!tabs)foreach(var id in workspace.Tabs)OpenNoteCore(id,new(id,workspace.X,workspace.Y,workspace.Width,workspace.Height));
+            restoredWorkspace=Windows.FirstOrDefault(window=>window.Mode=="home")??new MainWindow(this,"home");
+            await restoredWorkspace.RestoreSavedWorkspace(workspace);
         }
         foreach(var note in saved)
-            await RestoreNoteFromSession(note,tabs);
-        if(tabs&&restoredWorkspace is not null&&workspace is not null)await restoredWorkspace.SwitchNoteTab(workspace.ActiveId);
+            await RestoreNoteFromSession(note,false);
+        if(restoredWorkspace is not null&&workspace is not null)await restoredWorkspace.SwitchNoteTab(workspace.ActiveId);
     }
     internal Task<MainWindow> RestoreNoteFromSession(SavedNoteWindow saved,bool preferTabs)
     {

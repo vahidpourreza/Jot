@@ -1,4 +1,7 @@
 /* Pins stay beside Home while regular tabs scroll independently. */
+.workspace-tab>[role=tab]{align-items:center;padding-block:0;line-height:18px}
+.workspace-tab>[role=tab] .tab-title{align-self:center;line-height:18px;padding-block:0;margin-block:0}
+.workspace-tab .tab-marker.note-emoji{display:inline-flex;align-items:center;justify-content:center;align-self:center;height:16px}
 .workspace-pinned-tabs{display:flex;align-items:stretch;gap:4px;flex:0 1 auto;min-width:104px;max-width:min(42%,468px);height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:auto}
 .workspace-pinned-tabs[hidden]{display:none}
 .workspace-tabs[data-has-pins=true] .workspace-note-tabs{flex:1 1 112px;min-width:72px}

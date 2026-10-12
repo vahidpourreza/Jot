@@ -1,4 +1,4 @@
-import { Editor } from '@tiptap/core';
+import { Editor, type Range } from '@tiptap/core';
 import { AllSelection, EditorState, NodeSelection, Selection as PMSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { DOMSerializer, type Node as DocumentNode } from '@tiptap/pm/model';
@@ -6,7 +6,8 @@ import { closeHistory } from '@tiptap/pm/history';
 import { runSchemaChecks } from './schema-checks';
 import { createJotExtensions } from './jot-extensions';
 import { importLegacyHtml, validateJotRoundTrip } from './jot-html-compatibility';
-import { mountEditorUi, createSlashCommandExtension, dismissEditorUi } from './editor-ui';
+import { mountEditorUi, createSlashCommandExtension, dismissEditorUi, refreshEditorUi, type WritingPreferences } from './editor-ui';
+import { FindInNote, mountFindInNote } from './find-in-note';
 import '@editorcn/block-editor/style.css';
 import './editor-ui.css';
 
@@ -15,7 +16,13 @@ interface Host {
   toolbarHost: HTMLElement;
   onChange: () => void;
   onSelectionChange: () => void;
-  onImage: () => void;
+  onImage: (editor: Editor, range?: Range) => void;
+  getWritingPreferences: () => WritingPreferences;
+  setWritingPreference: (key: 'fontSize'|'lineHeight', value: number|null) => void|Promise<void>;
+  isNoteActive: () => boolean;
+  findBefore: HTMLElement;
+  shortcut: (event: KeyboardEvent) => string|null;
+  shortcutLabel: (action:string)=>string;
   onError: (error: Error) => void;
   clipboard: (payload: {html: string; text: string; image?: string}) => Promise<unknown>;
   getInputDirection: () => 'ltr' | 'rtl';
@@ -31,13 +38,14 @@ function create(host: Host) {
   const warning = document.createElement('p');
   warning.className = 'editor-compatibility-warning'; warning.role = 'alert'; warning.hidden = true;
   host.contentHost.before(warning);
-  const callbacks = {onImage: host.onImage, onError: host.onError};
+  let find: ReturnType<typeof mountFindInNote>;
+  const callbacks = {onImage: host.onImage, onError: host.onError, getWritingPreferences:host.getWritingPreferences, setWritingPreference:host.setWritingPreference, shortcutLabel:host.shortcutLabel, onFind:()=>find?.open()};
   const tip = new Editor({
     element: document.createElement('div'),
     injectCSS: false,
     content: '<p></p>',
     parseOptions: {preserveWhitespace: 'full'},
-    extensions: [...createJotExtensions({getInputDirection: host.getInputDirection}), createSlashCommandExtension(callbacks)],
+    extensions: [...createJotExtensions({getInputDirection: host.getInputDirection}), FindInNote, createSlashCommandExtension(callbacks)],
     editorProps: {
       attributes: {id: 'editor', class: 'editor', role: 'textbox', 'aria-label': 'Note text · Persian and English', 'aria-multiline': 'true', spellcheck: 'false'},
       // handleDOMEvents returning true bypasses editor keymaps without
@@ -61,6 +69,7 @@ function create(host: Host) {
       if (await host.clipboard(payload) !== true) throw new Error('Copy was interrupted. Your note is unchanged.');
     },
   });
+  find=mountFindInNote({editor:tip,before:host.findBefore,available:host.isNoteActive,shortcut:host.shortcut,shortcutLabel:host.shortcutLabel});
   loading = false;
   const current = () => currentId ? states.get(currentId) : undefined;
   const getHTML = () => {
@@ -78,6 +87,7 @@ function create(host: Host) {
     view.domObserver.forceFlush(); view.domObserver.flush();
   }
   function loadNote(id: string, html: string, reset = false) {
+    find.close(false);
     dismissEditorUi(tip);
     flush();
     if (currentId && current()) {
@@ -206,10 +216,12 @@ function create(host: Host) {
     },
     setEditable(value: boolean) { tip.setEditable(value && !current()?.blocked.length, false); },
     dismissUi: () => dismissEditorUi(tip),
+    refreshUi: () => refreshEditorUi(tip),
+    find,
     prune(ids: string[]) { const valid = new Set(ids); for (const id of states.keys()) if (id !== currentId && !valid.has(id)) states.delete(id); },
     get blocked() { return !!current()?.blocked.length; },
     runSchemaChecks,
-    destroy() {disposeUi(); tip.destroy(); states.clear(); warning.remove();},
+    destroy() {find.destroy(); disposeUi(); tip.destroy(); states.clear(); warning.remove();},
   };
   return api;
 }

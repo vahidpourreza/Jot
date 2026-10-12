@@ -127,8 +127,15 @@ body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !imp
 .jot-block-editor .block-editor-add-block { width: 15px; height: 22px; border-radius: 3px; }
 .jot-block-editor .block-editor-drag-handle-icon { width: 15px; }
 
-.jot-editor-toolbar { display: flex; align-items: center; gap: 2px; min-width: max-content; height: 30px; }
-.app[data-document=true] #formatBar:has(.jot-editor-toolbar) { overflow-x: auto; overflow-y: hidden; padding-block: 1px; }
+.jot-editor-toolbar { display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0; height: 34px; }
+.app[data-document=true] .quiet-footer.document-toolbar { height: 41px; min-height: 41px; padding: 0; gap: 0; border: 0; }
+.app[data-document=true] #formatBar:has(.jot-editor-toolbar) {
+  position: static; inset: auto; display: flex; flex: 0 0 auto; width: 100%; min-width: 0; box-sizing: border-box;
+  overflow: visible; padding: 3px 10px; border-bottom: 1px solid var(--border); background: var(--background);
+}
+.jot-tool-slot { display: inline-flex; flex: none; align-items: center; }
+.jot-tool-slot[hidden] { display: none; }
+.jot-toolbar-spacer { flex: 1; min-width: 0; }
 .jot-tool {
   display: inline-flex;
   align-items: center;
@@ -151,6 +158,8 @@ body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !imp
 .jot-tool-label { padding-inline: 7px; }
 .jot-tool-label > span { min-width: 35px; text-align: start; }
 .jot-tool:hover:not(:disabled), .jot-tool[aria-pressed=true], .jot-tool[data-active], .jot-tool[data-popup-open] { background: var(--muted); color: var(--foreground); }
+.jot-tool:disabled { opacity: .38; }
+.jot-tool:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .jot-tool-separator { flex: none; width: 1px; height: 15px; margin-inline: 3px; background: var(--border); }
 .jot-editor-positioner { z-index: 1150; }
 .jot-selection-bubble { z-index: 1100; }
@@ -204,6 +213,12 @@ body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !imp
 .jot-table-header-option { display: flex; align-items: center; gap: 6px; margin-block: 10px; font-size: 12px; }
 .jot-table-header-option input { accent-color: var(--primary); }
 .jot-table-insert .jot-editor-submit { width: 100%; }
+.jot-writing-preferences { width: 270px; }
+.jot-writing-setting { display: grid; grid-template-columns: 65px 70px 1fr; gap: 7px; align-items: center; margin-block: 7px; }
+.jot-writing-setting > label { font-size: 12px; }
+.jot-writing-setting .jot-editor-text-action { padding-inline: 3px; }
+.jot-editor-text-action:disabled { opacity: .5; cursor: default; }
+.jot-writing-hint { margin: 9px 0 0; color: var(--muted-foreground); font-size: 11px; }
 
 /* Match upstream popovers to Jot and keep them usable in a 320px note window. */
 .block-editor-bubble-menu { height: auto; min-height: 32px; max-width: calc(100vw - 16px); flex-wrap: wrap; padding: 3px; border-radius: 6px; font-family: IRANSansX, 'Segoe UI', sans-serif; direction: ltr; animation: none; }
@@ -220,6 +235,15 @@ body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !imp
 .block-editor-slash-menu-search { padding: 8px 9px; }
 .block-editor-slash-menu-search > svg { width: 15px; height: 15px; }
 .block-editor-slash-menu-search-input { font-size: 12px; }
+.jot-slash-positioner { z-index: 1120; max-width: calc(100vw - 16px); }
+.jot-slash-positioner .jot-slash-menu { display: flex; flex-direction: column; width: 100%; max-height: min(380px, var(--jot-slash-height)); overflow: hidden; box-sizing: border-box; }
+.jot-slash-menu .block-editor-slash-menu-search { flex: none; min-height: 36px; box-sizing: border-box; }
+.jot-slash-menu .block-editor-slash-menu-list { min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px; }
+.jot-slash-menu .block-editor-slash-menu-item { display: flex; width: 100%; text-align: start; border: 0; background: transparent; color: var(--foreground); font: inherit; }
+.jot-slash-menu .block-editor-slash-menu-item[aria-selected=true] { background: var(--muted); }
+.jot-slash-menu .block-editor-slash-menu-item-content { display: flex; flex-direction: column; min-width: 0; }
+.jot-slash-menu .block-editor-slash-menu-item-icon { display: grid; place-items: center; flex: none; }
+.jot-slash-menu .block-editor-slash-menu-item-icon svg { width: 16px; height: 16px; }
 .block-editor-link-input { border-radius: 4px; }
 .block-editor-bubble-overlay { background: transparent; }
 :root[data-theme=light] .jot-block-editor .editor pre .hljs-comment { color: #697175; }
@@ -233,6 +257,8 @@ body:has(#workspaceViews[inert]) .jot-selection-bubble { visibility: hidden !imp
   .jot-editor-toolbar { gap: 1px; }
   .jot-tool { min-width: 26px; padding: 4px; }
   .jot-tool-label { padding-inline: 5px; }
+  .jot-tool-label > span { min-width: 24px; max-width: 38px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app[data-document=true] #formatBar:has(.jot-editor-toolbar) { padding-inline: 6px; }
   .block-editor-bubble-btn { padding-inline: 4px; }
   .block-editor-bubble-btn-text { max-width: 52px; }
   .block-editor-bubble-separator { margin-inline: 1px; }

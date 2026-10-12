@@ -241,13 +241,14 @@ function moveNotes(notes){
 }
 function openNoteMenu(note,x,y,owner){
   closeFolders();JotMenus.open({x,y,owner,restore:()=>owner.focus({preventScroll:true}),error,items:[
-    {id:'open',label:'Open',icon:'notepad-text'},{id:'tab',label:'Open in new tab',icon:'panels-top-left'},
+    {id:'open',label:'Open',icon:'notepad-text'},{id:'open-window',label:'Open in window',icon:'external-link'},
     {separator:true},{id:'pin-library',label:note.libraryPinned?'Unpin':'Pin to top',icon:'pin',pending:'Updating…'},{id:'select-note',label:'Select',icon:'check'},
     {id:'rename',label:'Rename',icon:'pencil'},{id:'note-icon',label:'Note emoji',icon:'notepad-text'},{id:'move',label:'Move to folder',icon:'folder'},
     {separator:true},{id:'copy',label:'Copy',icon:'copy',pending:'Copying…'},{id:'export',label:'Export',icon:'download',pending:'Exporting…'},
     {separator:true},{id:'delete',label:'Move to Trash',icon:'trash-2'}
   ],async run(action){
-    if(action==='open'||action==='tab')await openNote(note,action==='tab');
+    if(action==='open')await openNote(note);
+    else if(action==='open-window')await request('open-note',note.id);
     else if(action==='pin-library'){await request('library-pin',{id:note.id,pinned:!note.libraryPinned});await refresh();}
     else if(action==='select-note'){selectionMode=true;toggleSelected(note.id,true);}
     else if(action==='rename')editNote(note);else if(action==='note-icon')JotNoteIcons.open(note,{owner});else if(action==='move')moveNote(note);

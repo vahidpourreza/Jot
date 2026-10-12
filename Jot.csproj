@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jot</AssemblyName>
     <RootNamespace>Jot</RootNamespace>
-    <Version>1.7.0</Version>
+    <Version>1.7.1</Version>
     <ApplicationIcon>assets\jot.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(JotOfflinePackage)' == 'true'">

@@ -4,14 +4,14 @@ window.JotDocumentHeading=(()=>{
   const heading=document.createElement('header');heading.id='documentHeading';heading.className='document-heading';
   const emoji=document.createElement('button');emoji.id='documentEmoji';emoji.type='button';emoji.className='document-emoji';emoji.title=emoji.ariaLabel='Change note emoji';
   const title=document.createElement('textarea');title.id='documentTitle';title.className='document-title';title.rows=1;title.maxLength=140;title.placeholder='Untitled';title.ariaLabel='Note title';title.dir='auto';title.spellcheck=false;
-  const feedback=document.createElement('div');feedback.className='document-title-feedback';feedback.hidden=true;
+  const feedback=document.createElement('div');feedback.id='documentTitleFeedback';feedback.className='document-title-feedback';feedback.hidden=true;title.setAttribute('aria-describedby',feedback.id);
   const message=document.createElement('span');message.role='status';
   const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';retry.hidden=true;
   feedback.append(message,retry);heading.append(emoji,title,feedback);document.getElementById('writingArea').prepend(heading);
   const fileIdentity=document.getElementById('fileIdentity');if(fileIdentity)heading.append(fileIdentity);
   let currentId=null,timer=0,chain=Promise.resolve(),serial=0,titleComposing=false;
   const current=()=>typeof activeNote==='function'&&(!window.JotWorkspace||JotWorkspace.view==='note')?activeNote():null;
-  function resize(){title.style.height='0px';title.style.height=Math.min(120,Math.max(32,title.scrollHeight))+'px';}
+  function resize(){title.style.height='0px';title.style.height=Math.min(84,Math.max(28,title.scrollHeight))+'px';}
   function status(text,error=false){feedback.hidden=!text;feedback.dataset.error=String(error);message.textContent=text||'';retry.hidden=!error;if(text==='Saving title…')heading.ariaBusy='true';else heading.removeAttribute('aria-busy');}
   function render(){
     const note=current();if(!note)return;

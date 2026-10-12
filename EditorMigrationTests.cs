@@ -27,7 +27,7 @@ public partial class MainWindow
                 var id=await target.Store.Create();
                 await target.Store.SaveMetadata(JsonSerializer.SerializeToElement(new{id,title,icon="emoji:👨‍👩‍👧‍👦",color="teal"}));
                 await target.Store.SaveNote(JsonSerializer.SerializeToElement(new{id,html=legacyHtml,plain="Legacy fixture remains unchanged until edited."}));
-                note=await target.OpenNoteDefault(id);note.Width=800;note.Height=650;
+                note=mode=="window"?await target.OpenNoteWindow(id):await target.OpenNoteDefault(id);note.Width=800;note.Height=650;
                 await note.WaitFor("window.jotReady===true&&!!window.JotRichEditor?.ready&&!!JotRichEditor.editor?.view");
                 var compatibilityWarning=JsonSerializer.Deserialize<string>(await note.Script("document.querySelector('.editor-compatibility-warning')?.textContent||''"));
                 Check("supported-legacy-document-is-editable",await note.Script("editor.isContentEditable&&!JotRichEditor.blocked")=="true",compatibilityWarning);
@@ -70,6 +70,17 @@ public partial class MainWindow
                 async Task Select(string text,bool backward=false)
                 {
                     await note.Script("(()=>{const text="+JsonSerializer.Serialize(text)+",backward="+(backward?"true":"false")+";let found=false;JotRichEditor.editor.state.doc.descendants((node,pos)=>{if(found||!node.isText)return;const offset=node.text.indexOf(text);if(offset<0)return;const from=pos+offset,to=from+text.length;JotRichEditor.editor.commands.focus();JotRichEditor.restoreSelection({anchor:backward?to:from,head:backward?from:to});found=true;});if(!found)throw Error('Migration fixture text not found');window.migrationSelection=JSON.stringify(JotRichEditor.selection());window.migrationSelected=getSelection().toString()})()");
+                }
+                async Task OpenTableTools()
+                {
+                    if(await note.Script("!!document.querySelector('.jot-editor-toolbar button[aria-label=\"Insert table\"]')?.getClientRects().length")=="true")
+                        await note.ClickControl(".jot-editor-toolbar button[aria-label='Insert table']");
+                    else
+                    {
+                        await note.ClickControl(".jot-editor-toolbar button[aria-label='More editor tools']");
+                        await note.WaitFor("[...document.querySelectorAll('.jot-editor-menu-item')].some(item=>item.textContent==='Insert table')");
+                        await note.Script("[...document.querySelectorAll('.jot-editor-menu-item')].find(item=>item.textContent==='Insert table').click()");
+                    }
                 }
                 async Task CheckScript(string name,string predicate)
                 {
@@ -195,8 +206,7 @@ public partial class MainWindow
                 await note.Script("[...document.querySelectorAll('.block-editor-slash-menu-item')].find(item=>item.textContent.includes('Heading 1')).click()");
                 await Type("Slash heading");
                 await CheckScript("editorcn-slash-command-inserts-heading","editor.querySelector('h1')?.textContent==='Slash heading'&&!editor.textContent.includes('/heading')");
-                await note.Script("if(!document.querySelector('.jot-editor-toolbar')?.getClientRects().length)document.getElementById('formatButton').click()");
-                await note.ClickControl(".jot-editor-toolbar button[aria-label='Insert table']");
+                await OpenTableTools();
                 await note.WaitFor("!!document.querySelector('.jot-table-insert')?.getClientRects().length");
                 await Key("Escape","Escape",27);
                 await note.WaitFor("!document.querySelector('.jot-table-insert')?.getClientRects().length&&document.activeElement===editor");
@@ -267,7 +277,7 @@ public partial class MainWindow
                 {
                     note.Width=width;await target.ApplyPreferences(JsonSerializer.SerializeToElement(new{theme}));await Task.Delay(100);
                     await CheckScript("responsive-writing-surface-"+theme+"-"+width,"(()=>{const bounds=editor.getBoundingClientRect(),css=getComputedStyle(editor);return document.documentElement.scrollWidth<=innerWidth+1&&bounds.left>=0&&bounds.right<=innerWidth+1&&css.visibility==='visible'&&css.fontSize!=='0px'&&editor.isContentEditable})()");
-                    await note.ClickControl(".jot-editor-toolbar button[aria-label='Insert table']");
+                    await OpenTableTools();
                     await note.WaitFor("!!document.querySelector('.jot-table-insert')?.getClientRects().length");
                     await CheckScript("responsive-table-popover-"+theme+"-"+width,"(()=>{const bounds=document.querySelector('.jot-table-insert').getBoundingClientRect();return bounds.left>=0&&bounds.right<=innerWidth+1&&bounds.top>=0&&bounds.bottom<=innerHeight+1})()");
                     await note.Capture("editor-migration-"+mode+"-"+theme+"-"+width);

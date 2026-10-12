@@ -263,7 +263,7 @@ window.JotWorkspaceTabs=(()=>{
     root.oncontextmenu=event=>{
       if(event.defaultPrevented||event.target.closest('.workspace-tab'))return;
       event.preventDefault();event.stopPropagation();
-      JotMenus.open({x:event.clientX,y:event.clientY,owner:state.add,items:[{id:'tab-reopen',label:'Reopen closed tab',icon:'undo-2',shortcut:window.JotShortcutBindings?.label('reopen-tab'),disabled:!state.canReopenTab}],run:()=>action(state,'tab-reopen')});
+      JotMenus.close();
     };
     root.replaceChildren(state.home.item,pinnedList,state.previous,list,state.next,add,state.all);
     state.viewportWidth=root.getBoundingClientRect().width;

@@ -56,7 +56,7 @@ window.JotTextSize=(()=>{
   function describe(){
     for(const [id,action,hint] of [['smallerButton','note-text-smaller','Decrease font size'],['largerButton','note-text-larger','Increase font size'],['defaultFontSize','note-text-default','Use the app writing default']]){
       const shortcut=JotShortcutBindings.label(action);
-      document.getElementById(id).setAttribute('aria-description',hint+(shortcut?' · '+shortcut:'')+(action==='note-text-default'?'':' · Ctrl+mouse wheel'));
+      document.getElementById(id)?.setAttribute('aria-description',hint+(shortcut?' · '+shortcut:'')+(action==='note-text-default'?'':' · Ctrl+mouse wheel'));
     }
   }
   void JotShortcutBindings.ready.then(describe);

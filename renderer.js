@@ -8,6 +8,7 @@ let ready=false,revision=0,savedRevision=-1,saveTimer,typingTimer,selectionTimer
 let historyTimer=0,typingHistoryPending=false;
 let saveChain=Promise.resolve(),bookmark=null,bookmarkDirection=null,pmBookmark=null,composing=false,imageBusy=false,pinned=false,keepFormatOpen=true;
 let cutting=false;
+let pendingImageRequest=null;
 let inputDirection='rtl',deleting=false;
 let noteFullscreen=false,fullscreenBusy=false;
 let workspace=false,tabbed=false,tabHeaders=[],tabBusy=false,tabPendingId=null,tabPendingAction=null;
@@ -181,7 +182,16 @@ const dock=document.querySelector('.quiet-footer');$('writingArea').before(dock)
 const rich=window.JotRichEditor=JotEditorFactory.create({
   contentHost:editorHost,toolbarHost:$('formatBar'),onChange:()=>onEdit(),
   onSelectionChange:()=>{if(ready){pmBookmark=rich.selection();refreshToolbar();}},
-  onImage:()=>{rememberSelection();$('imageInput').click();},onError:showError,
+  onImage:(_editor,range)=>{
+    if(!ready||imageBusy||deleting)return;rememberSelection();
+    pendingImageRequest={id:model.activeId,revision,selection:editorSelectionState(),range,query:range?rich.editor.state.doc.textBetween(range.from,range.to):null};
+    $('imageInput').value='';$('imageInput').click();
+  },onError:showError,
+  getWritingPreferences:()=>({fontSize:model.prefs.fontSize,lineHeight:model.prefs.lineHeight,fontSizeOverride:activeNote()?.view?.fontSize??null,lineHeightOverride:activeNote()?.view?.lineHeight??null}),
+  setWritingPreference:(key,value)=>setPreference({[key]:value}),
+  isNoteActive:()=>ready&&!app.hidden&&!app.inert&&(!window.JotWorkspace||JotWorkspace.view==='note'),findBefore:$('writingArea'),
+  shortcut:event=>window.JotShortcutBindings?.match(event,'writing')||null,
+  shortcutLabel:action=>window.JotShortcutBindings?.label(action)||'',
   clipboard:payload=>request('clipboard-write',payload),getInputDirection:()=>inputDirection,
   plainText:html=>{const holder=document.createElement('div');holder.innerHTML=html;return editorPlainText(holder);}
 });
@@ -317,7 +327,7 @@ function closePanels() {
   closeFormatMenus();
   setToolbarVisible(model.prefs.toolbarVisible !== false); setNoteMenuVisible(false);
   $('menuButton').setAttribute('aria-expanded', 'false');
-  keepFormatOpen = model.prefs.toolbarVisible !== false;
+  keepFormatOpen = true;
 }
 function selectNote(id) {
   flushTypingHistory();
@@ -415,25 +425,7 @@ function applyPrefs() {
   for(const key of ['fontSize','lineHeight','toolbarVisible','pinned'])if(view[key]!==undefined&&view[key]!==null)overrides[key]=view[key];
   model.prefs=JotDesign.apply({...appPreferences,...overrides});
   applyNoteColor();
-  $('fontSize').textContent=model.prefs.fontSize+' px';
-  $('smallerButton').disabled=model.prefs.fontSize<=13;
-  $('largerButton').disabled=model.prefs.fontSize>=24;
-  $('smallerButton').title=$('smallerButton').disabled?'Minimum font size (13 px)':'Decrease font size';
-  $('largerButton').title=$('largerButton').disabled?'Maximum font size (24 px)':'Increase font size';
-  $('lineHeight').textContent=model.prefs.lineHeight+'×';
-  $('tighterLinesButton').disabled=model.prefs.lineHeight<=1.2;
-  $('looserLinesButton').disabled=model.prefs.lineHeight>=2.5;
-  for(const [key,id] of [['fontSize','defaultFontSize'],['lineHeight','defaultLineHeight']]){
-    const button=$(id),inherited=view[key]===undefined||view[key]===null;
-    const busy=button.getAttribute('aria-busy')==='true';button.disabled=busy||inherited;button.textContent=busy?'Applying…':inherited?'Default':'Use default';button.title=inherited?'Using the app writing default':'Use the app writing default for this note';
-  }
-  $('tighterLinesButton').title=$('tighterLinesButton').disabled?'Minimum line height (1.2×)':'Decrease line height';
-  $('looserLinesButton').title=$('looserLinesButton').disabled?'Maximum line height (2.5×)':'Increase line height';
-  const nextMode=model.prefs.theme==='dark'?'light':'dark';
-  $('themeLabel').textContent=nextMode==='light'?'Light mode':'Dark mode';
-  $('themeButton').title='Switch all of Jot to '+nextMode+' mode';
-  keepFormatOpen=model.prefs.toolbarVisible!==false;
-  setToolbarVisible(keepFormatOpen);
+  keepFormatOpen=true;setToolbarVisible(true);rich.refreshUi();
   applyPin(!!model.prefs.pinned);
 }
 function applyNoteColor() {
@@ -583,21 +575,24 @@ function readImage(file) {
   });
 }
 function insertImages(...args){return trackEdit(insertImagesCore(...args));}
-async function insertImagesCore(files,isCurrent=()=>true) {
+async function insertImagesCore(files,isCurrent=()=>true,picker=null) {
   if (!files.length || imageBusy) return;
   rememberSelection();
-  const targetId = model.activeId,targetRevision=revision,targetSelection=editorSelectionState();
+  const targetId = model.activeId,targetRevision=revision,targetSelection=picker?.selection||editorSelectionState();
+  if(picker&&(picker.id!==targetId||picker.revision!==targetRevision))throw new Error('The note changed. Insert the image again at the intended position.');
   imageBusy = true;
-  $('imageButton').disabled = true;
   try {
     const results = [];
     for (const file of files) results.push(await readImage(file));
     if (model.activeId !== targetId||revision!==targetRevision||composing||deleting||!isCurrent()) throw new Error('یادداشت تغییر کرد. تصویر را دوباره بچسبانید.');
     const size = results.reduce((sum, src) => sum + src.length, 0) + rich.getHTML().length;
     if (size > 24 * 1024 * 1024) throw new Error('حجم این یادداشت زیاد است؛ تصویر را در یادداشت جدید قرار دهید.');
-    restoreEditorSelection(targetSelection);
+    if(picker?.range){
+      if(rich.editor.state.doc.textBetween(picker.range.from,picker.range.to)!==picker.query)throw new Error('The insertion point changed. Choose Image again.');
+      restoreEditorSelection({anchor:picker.range.from,head:picker.range.to});
+    }else restoreEditorSelection(targetSelection);
     command('insertHTML', results.map((src) => '<img alt="'+JotI18n.text('تصویر')+'" src="' + src + '">').join(' ') + ' ');
-  } finally { imageBusy = false; $('imageButton').disabled = false; }
+  } finally { imageBusy = false; }
 }
 async function importHtml(html, files) {
   const doc=new DOMParser().parseFromString(html,'text/html');
@@ -725,8 +720,6 @@ editor.addEventListener('drop', (event) => {
 },true);
 editor.addEventListener('click', (event) => { if (event.target.closest('a')) event.preventDefault(); });
 legacyControls.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => {command(button.dataset.command);closeFormatMenus();}));
-$('formatButton').addEventListener('pointerdown', (event) => { rememberSelection(); event.preventDefault(); });
-$('formatButton').addEventListener('click',()=>setPreference({toolbarVisible:!keepFormatOpen}));
 document.addEventListener('selectionchange',()=>{
   rememberSelection();
   if(selectionTimer)return;
@@ -734,13 +727,6 @@ document.addEventListener('selectionchange',()=>{
 });
 $('newButton').addEventListener('click',()=>newNote());
 $('dialogNewButton').addEventListener('click', newNote);
-$('menuNotesButton').addEventListener('click', openNotes);
-$('tighterLinesButton').addEventListener('click',()=>setPreference({lineHeight:JotDesign.stepLineHeight(model.prefs.lineHeight,-1)}));
-$('looserLinesButton').addEventListener('click',()=>setPreference({lineHeight:JotDesign.stepLineHeight(model.prefs.lineHeight,1)}));
-for(const [id,key] of [['defaultFontSize','fontSize'],['defaultLineHeight','lineHeight']])$(id).addEventListener('click',async()=>{
-  const button=$(id);button.ariaBusy='true';button.disabled=true;
-  try{await setPreference({[key]:null});}finally{button.removeAttribute('aria-busy');applyPrefs();}
-});
 $('closeNotesButton').addEventListener('click', () => { $('notesDialog').close(); editor.focus(); });
 $('search').addEventListener('input', renderList);
 $('notesDialog').addEventListener('close', () => editor.focus());
@@ -770,12 +756,7 @@ function setNoteMenuVisible(open) {
   noteMenuAnimation=transitionVisibility(panel,open,{opacity:1,clipPath:'inset(0% 0% 100% 0%)'},{opacity:1,clipPath:'inset(0% 0% 0% 0%)'},open?260:200,()=>noteMenuAnimation=null);
 }
 function setToolbarVisible(open) {
-  $('formatButton').setAttribute('aria-expanded',String(open));
-  $('formatButton').title=(open?'Hide':'Show')+' formatting tools';
-  if(toolbarShown===open)return;
-  const initialized=toolbarShown!==null;toolbarShown=open;
-  if(!open)closeFormatMenus();
-  toolbarAnimation=transitionVisibility($('formatBar'),open,{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0px)'},open?220:180,()=>toolbarAnimation=null,initialized);
+  toolbarShown=true;keepFormatOpen=true;$('formatBar').hidden=false;
 }
 function setColorMenuVisible(open) {
   const panel=$('colorMenu');if(!open&&panel.hidden)return;
@@ -812,8 +793,6 @@ $('noteColors').addEventListener('keydown',event=>{
   const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:Math.max(0,Math.min(buttons.length-1,index+step));
   buttons.forEach((button,i)=>button.tabIndex=i===next?0:-1);buttons[next].focus({preventScroll:true});
 });
-$('themeButton').addEventListener('click',()=>setAppTheme(model.prefs.theme==='dark'?'light':'dark'));
-for (const [id, delta] of [['smallerButton', -1], ['largerButton', 1]]) $(id).addEventListener('click', () => setPreference({fontSize:Math.min(24,Math.max(13,model.prefs.fontSize+delta))}));
 function applyPin(value) {
     const changed=pinned!==value;pinned=value;
     $('pinButton').setAttribute('aria-pressed', String(pinned));
@@ -842,7 +821,6 @@ $('fullscreenButton').onclick=toggleNoteFullscreen;
 async function leave(action) { try { if(action!=='hide')await saveNow();await request(action); } catch (error) { showError(error); } }
 $('minimizeButton').onclick=()=>leave('minimize');
 $('hideButton').addEventListener('click', () => leave('hide'));
-$('deleteButton').onclick=()=>{closePanels();$('deleteError').hidden=true;$('deleteDialog').showModal();$('deleteCancel').focus();};
 $('deleteCancel').onclick=()=>$('deleteDialog').close();
 $('deleteDialog').addEventListener('cancel',event=>{if(deleting)event.preventDefault();});
 $('deleteDialog').addEventListener('close',()=>{if(!deleting)editor.focus();});
@@ -859,9 +837,10 @@ $('deleteConfirm').onclick=async()=>{
     $('deleteConfirm').setAttribute('aria-busy','false');$('deleteConfirm').textContent='Move to Trash';
   }
 };
-$('imageButton').addEventListener('pointerdown', () => rememberSelection());
-$('imageButton').addEventListener('click', () => $('imageInput').click());
-$('imageInput').addEventListener('change', () => { insertImages([...$('imageInput').files]).catch(showError); $('imageInput').value = ''; });
+$('imageInput').addEventListener('change', () => {const picker=pendingImageRequest;pendingImageRequest=null;insertImages([...$('imageInput').files],()=>true,picker).catch(showError);$('imageInput').value='';});
+$('imageInput').addEventListener('cancel',()=>{pendingImageRequest=null;});
+$('noteAppLogo')?.addEventListener('contextmenu',event=>{event.preventDefault();window.JotHomeMenu?.open(event.currentTarget,event.clientX,event.clientY);});
+$('noteAppLogo')?.addEventListener('click',event=>{const r=event.currentTarget.getBoundingClientRect();window.JotHomeMenu?.open(event.currentTarget,r.left,r.bottom);});
 $('exportButton').addEventListener('click', async () => {
   closePanels();
   try { await saveNow(); await request('export', { name: noteName(activeNote()), html: rich.blocked?sanitizeHtml(rich.getHTML()):rich.getHTML() }); } catch (error) { showError(error); }
@@ -929,6 +908,9 @@ async function boot() {
     noteFullscreen=JotWorkspace.maximized;
     return;
   }
+  // Standalone readiness includes the trailing file/menu/heading modules.
+  // A fast note-load response must not reveal a half-initialized note window.
+  if(document.readyState==='loading')await new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true}));
   const {context,model:stored}=await request('note-load');
   noteFullscreen=!!context.fullscreen;updateFullscreenButton();
   workspace=false;tabbed=false;tabHeaders=[];
@@ -948,7 +930,7 @@ async function boot() {
   requestAnimationFrame(()=>{app.dataset.paintReady='true';});
 }
 window.JotNoteEditor={show:installTabContent,
-  suspend(){if(ready){rememberTabView();flushTypingHistory();}closePanels();rich.setEditable(false);resumeEditing();ready=false;},
+  suspend(){if(ready){rememberTabView();flushTypingHistory();}rich.find.close(false);closePanels();rich.setEditable(false);resumeEditing();ready=false;pendingImageRequest=null;},
   setHeaders(headers){tabHeaders=headers;pruneTabHistories();},
   openOptions(owner){if(ready){workspaceOptionsOwner=owner;$('menuButton').click();positionNoteMenu();}},
   save:saveNow

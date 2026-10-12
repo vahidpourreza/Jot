@@ -17,7 +17,6 @@ function render(){
   if(!embedded||JotWorkspace.view==='settings')prefs=JotDesign.apply(prefs);
   renderWorkspaceTabs();
   document.querySelectorAll('[data-theme-choice]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.themeChoice===prefs.theme)));
-  document.querySelectorAll('[data-new-note-target]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.newNoteTarget===(prefs.newNoteTarget||'tab'))));
   $('autoSaveFiles').setAttribute('aria-checked',String(!!prefs.autoSaveFiles));
   JotShortcutsPage.render(prefs);
   $('settingsFontSize').textContent=prefs.fontSize+' px';
@@ -29,18 +28,17 @@ function render(){
 }
 async function preference(patch){
   if(settingsBusy)return;settingsBusy=true;$(embedded?'settingsError':'homeError').hidden=true;JotToast.dismiss('settings-error');
-  if(embedded&&patch.newNoteTarget)JotWorkspace.setOpeningModeBusy(true);
-  const buttons=[...document.querySelectorAll('[data-theme-choice],[data-new-note-target],#settingsFontSmaller,#settingsFontLarger,#settingsLineHeight,#autoSaveFiles,#globalShortcuts')];
+  const buttons=[...document.querySelectorAll('[data-theme-choice],#settingsFontSmaller,#settingsFontLarger,#settingsLineHeight,#autoSaveFiles,#globalShortcuts')];
   const toggle=patch.autoSaveFiles!==undefined?$('autoSaveFiles'):patch.globalShortcuts!==undefined?$('globalShortcuts'):null;
-  const pendingButton=buttons.find(button=>patch.theme?button.dataset.themeChoice===patch.theme:patch.newNoteTarget&&button.dataset.newNoteTarget===patch.newNoteTarget);
+  const pendingButton=buttons.find(button=>patch.theme&&button.dataset.themeChoice===patch.theme);
   const label=pendingButton?.textContent;
   buttons.forEach(button=>button.disabled=true);
   if(toggle)toggle.ariaBusy='true';
   if(pendingButton){pendingButton.ariaBusy='true';pendingButton.textContent='Applying…';}
-  $('homeStatus').textContent=patch.theme?'Applying theme…':patch.newNoteTarget?'Moving open notes…':toggle?'Applying setting…':'Applying writing defaults…';$('homeStatus').ariaBusy='true';
+  $('homeStatus').textContent=patch.theme?'Applying theme…':toggle?'Applying setting…':'Applying writing defaults…';$('homeStatus').ariaBusy='true';
   try{prefs=await request('preferences',patch);render();$('homeStatus').textContent='';}
   catch(e){error(e);$('homeStatus').textContent='';}
-  finally{settingsBusy=false;if(embedded&&patch.newNoteTarget)JotWorkspace.setOpeningModeBusy(false);$('homeStatus').ariaBusy='false';buttons.forEach(button=>button.disabled=false);if(toggle)toggle.removeAttribute('aria-busy');if(pendingButton){pendingButton.removeAttribute('aria-busy');pendingButton.textContent=label;}render();}
+  finally{settingsBusy=false;$('homeStatus').ariaBusy='false';buttons.forEach(button=>button.disabled=false);if(toggle)toggle.removeAttribute('aria-busy');if(pendingButton){pendingButton.removeAttribute('aria-busy');pendingButton.textContent=label;}render();}
 }
 function showMain(){shortcutsVisible=false;JotShortcutsPage.hide();$('appearance').hidden=false;$('settingsPageTitle').textContent='Settings';$('settingsBack').title=$('settingsBack').ariaLabel='Back to Home';}
 async function showShortcuts(){
@@ -59,7 +57,6 @@ $('settingsQuit').onclick=async()=>{
   catch(e){$('settingsQuit').disabled=false;$('settingsQuit').setAttribute('aria-busy','false');error(e);}
 };
 document.querySelectorAll('[data-theme-choice]').forEach(button=>button.onclick=()=>preference({theme:button.dataset.themeChoice}));
-document.querySelectorAll('[data-new-note-target]').forEach(button=>button.onclick=()=>preference({newNoteTarget:button.dataset.newNoteTarget}));
 $('settingsFontSmaller').onclick=()=>preference({fontSize:Math.max(13,prefs.fontSize-1)});
 $('settingsFontLarger').onclick=()=>preference({fontSize:Math.min(24,prefs.fontSize+1)});
 $('settingsLineHeight').onchange=()=>preference({lineHeight:Number($('settingsLineHeight').value)});
